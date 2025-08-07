@@ -1,0 +1,15 @@
+{
+    "trainer_chain": [
+        {
+            "trainer": "TQATrainer",
+            "trainer_init": {
+                "evaluator": "StatevectorEvaluator",
+                "evaluator_init": {}
+            },
+            "train_kwargs": {
+                "reps": 7
+            }
+        }
+    ],
+    "description": "TQATrainer with StatevectorEvaluator (p=7)"
+}

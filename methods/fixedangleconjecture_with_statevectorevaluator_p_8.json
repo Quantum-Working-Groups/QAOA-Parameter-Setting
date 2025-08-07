@@ -1,0 +1,15 @@
+{
+    "trainer_chain": [
+        {
+            "trainer": "FixedAngleConjecture",
+            "trainer_init": {
+                "evaluator": "StatevectorEvaluator",
+                "evaluator_init": {}
+            },
+            "train_kwargs": {
+                "reps": 8
+            }
+        }
+    ],
+    "description": "FixedAngleConjecture with StatevectorEvaluator (p=8)"
+}
