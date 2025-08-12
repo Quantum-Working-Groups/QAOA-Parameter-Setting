@@ -1,0 +1,13 @@
+{
+    "trainer_chain": [
+        {
+            "trainer": "TQATrainer",
+            "trainer_init": {
+                "evaluator": "StatevectorEvaluator",
+                "evaluator_init": {}
+            },
+            "train_kwargs": {}
+        }
+    ],
+    "description": "TQATrainer with StatevectorEvaluator"
+}
