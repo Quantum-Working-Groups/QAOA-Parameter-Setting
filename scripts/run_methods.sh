@@ -5,6 +5,7 @@ shopt -s nullglob
 DIR1=""
 DIR2=""
 SAVE_DIR=""
+DEPTHS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -20,6 +21,13 @@ while [[ $# -gt 0 ]]; do
             SAVE_DIR="$2"
             shift 2
             ;;
+	--depths)
+            shift
+            while [[ $# -gt 0 && $1 != --* ]]; do
+                DEPTHS+=("$1")
+                shift
+            done
+	    ;;
         *)
             echo "Unknown option: $1"
             exit 1
@@ -44,7 +52,7 @@ for file1 in "$DIR1"/*; do
       tk_flag="--train_kwargs0"
     fi
 
-    for depth in {2..5}; do
+    for depth in "${DEPTHS[@]}"; do
       echo "Processing: $file1 with $file2 and depth $depth"
       python -m train \
         --input "$file1" \
