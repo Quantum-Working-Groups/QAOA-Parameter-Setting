@@ -1,0 +1,26 @@
+{
+    "trainer_chain": [
+        {
+            "trainer": "FixedAngleConjecture",
+            "trainer_init": {
+                "evaluator": "MPSEvaluator",
+                "evaluator_init": {}
+            },
+            "train_kwargs": {}
+        },
+        {
+            "trainer": "ScipyTrainer",
+            "trainer_init": {
+                "evaluator": "MPSEvaluator",
+                "evaluator_init": {},
+                "minimize_args": {"options": {"maxiter": 100, "rhobeg": 0.2}}
+            },
+            "train_kwargs": {
+                "result": {
+                    "optimized_params": "params0"
+                }
+            }
+        }
+    ],
+    "description": "optimized FixedAngleConjecture with MPSEvaluator"
+}
