@@ -3,19 +3,13 @@
 
 import networkx as nx
 
-from qiskit import QuantumCircuit
-from qiskit.circuit.library import qaoa_ansatz, CXGate
+from qiskit.circuit.library import CXGate
 from qiskit.circuit.library.standard_gates.equivalence_library import _sel
-from qiskit.converters import circuit_to_dag
-from qiskit.quantum_info import SparsePauliOp
 from qiskit.transpiler import CouplingMap, Layout, PassManager
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit.transpiler.passes.routing.commuting_2q_gate_routing import (
     SwapStrategy, 
     Commuting2qGateRouter,
-)
-from qiskit.transpiler.passes.routing.commuting_2q_gate_routing.commuting_2q_block import (
-    Commuting2qBlock,
 )
 from qiskit.transpiler.passes import (
     BasisTranslator,
@@ -30,40 +24,13 @@ from qaoa_training_pipeline.utils.data_utils import load_input
 from qaoa_training_pipeline.utils.graph_utils import dict_to_graph
 
 from qopt_best_practices.qubit_selection import BackendEvaluator
+from qopt_best_practices.transpilation.cost_layer import get_cost_layer
+from qopt_best_practices.transpilation.prepare_cost_layer import PrepareCostLayer
 from qopt_best_practices.transpilation.qaoa_construction_pass import QAOAConstructionPass
 from qopt_best_practices.transpilation.swap_cancellation_pass import SwapToFinalMapping
 
 
 from qiskit.transpiler import TransformationPass
-
-class PrepareCostLayer(TransformationPass):
-    """Prepares the cost layer for the `Commuting2qGateRouter`.
-    
-    TODO: this should move to qopt-best-practices.
-    """
-
-    def run(self, dag):
-        """Run the pass."""
-        commuting_nodes = []
-        for node in dag.topological_op_nodes():
-            if node.op.name not in ["rz", "rzz"]:
-                raise ValueError(
-                    f"{self.__class__.__name__} only supports rz and rzz nodes. "
-                    f"Found {node.op.name} instead."
-                )
-
-            if node.op.name == "rzz":
-                commuting_nodes.append(node)
-
-        commuting_block = Commuting2qBlock(commuting_nodes)
-
-        wire_order = {
-            wire: idx
-            for idx, wire in enumerate(dag.qubits)
-            if wire not in dag.idle_wires()
-        }
-
-        dag.replace_block_with_op(commuting_nodes, commuting_block, wire_order)
 
 
 def make_qaoa_circuit(
@@ -120,21 +87,7 @@ def make_qaoa_circuit(
     # 2. Get the QAOA cost layer.
     num_qubits = cost_op.num_qubits
 
-    dummy_mixer_operator = SparsePauliOp.from_sparse_list(
-        [("I", [i], 1) for i in range(num_qubits)], 
-        num_qubits,
-    )
-
-    cost_layer = qaoa_ansatz(
-        cost_op,
-        reps=1,
-        initial_state=QuantumCircuit(num_qubits),
-        mixer_operator=dummy_mixer_operator,
-        name="QAOA cost block",
-    )
-
-    # qaoa_ansatz will have a left-over beta parameter which we set to zero.
-    cost_layer.assign_parameters({cost_layer.parameters[0]: 0}, inplace=True)
+    cost_layer = get_cost_layer(cost_op)
 
     # 3. Make the hardware native circuit.
 
