@@ -1,0 +1,60 @@
+{
+    "trainer_chain": [
+        {
+            "trainer": "DepthOneScanTrainer",
+            "trainer_init": {
+                "evaluator": "EfficientDepthOneEvaluator",
+                "evaluator_init": {}
+            },
+            "train_kwargs": {
+                "parameter_ranges": [
+                    [
+                        0,
+                        3.1456
+                    ],
+                    [
+                        0,
+                        3.1456
+                    ]
+                ],
+                "num_points": 15
+            }
+        },
+        {
+            "trainer": "ScipyTrainer",
+            "trainer_init": {
+                "evaluator": "EfficientDepthOneEvaluator",
+                "evaluator_init": {},
+                "minimize_args": {"options": {"maxiter": 100, "rhobeg": 0.2}}
+            },
+            "train_kwargs": {
+                "result": {
+                    "optimized_params": "params0"
+                }
+            }
+        },
+        {
+            "trainer": "RecursionTrainer",
+            "trainer_init": {
+                "trainer": "ScipyTrainer",
+                "trainer_init": {
+                    "evaluator": "PPEvaluator",
+                    "evaluator_init": {},
+                    "minimize_args": {
+                        "options": {
+                            "maxiter": 20,
+                            "rhobeg": 0.2
+                        }
+                    }
+                },
+                "parameter_extender": "interpolate"
+            },
+            "train_kwargs": {
+                "result": {
+                    "optimized_params": "params0"
+                }
+            }
+        }
+    ],
+    "description": "INTERP with PPEvaluator"
+}
