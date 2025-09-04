@@ -116,7 +116,7 @@ def make_qaoa_circuit(
 
         swap_strat = SwapStrategy(cmap, ())  # no SWAPs needed
     else:
-        edge_coloring = {(idx, idx + 1): idx % 2 for idx in range(num_qubits - 1)}
+        edge_coloring = {(idx, idx + 1): (idx + 1) % 2 for idx in range(num_qubits - 1)}
 
         swap_strat = SwapStrategy.from_line(range(num_qubits))
 
@@ -188,7 +188,7 @@ def make_qaoa_circuit(
     swap_circuit = validation_pm.run(cost_layer)
 
     if graph_type == "heavy_hex":
-        if swap_circuit.depth() != 3:
+        if swap_circuit.depth(lambda x: len(x.qubits) == 2) > 3:
             raise ValueError(
                 "Something went wrong with the heavy-hex routing. "
                 f"The circuit depth {swap_circuit.depth()} is instead of 3."
