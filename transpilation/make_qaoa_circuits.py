@@ -1,12 +1,16 @@
 """A method to make hardware native QAOA circuits."""
 
+from typing import List
+from warnings import warn
 import networkx as nx
+import rustworkx as rx
 from networkx.algorithms import isomorphism
 import numpy as np
 
 
 from qiskit.circuit.library import CXGate
 from qiskit.circuit.library.standard_gates.equivalence_library import _sel
+from qiskit.providers import Backend
 from qiskit.transpiler import CouplingMap, Layout, PassManager
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit.transpiler.passes.routing.commuting_2q_gate_routing import (
@@ -34,12 +38,82 @@ from qopt_best_practices.transpilation.qaoa_construction_pass import (
 from qopt_best_practices.transpilation.swap_cancellation_pass import SwapToFinalMapping
 
 
+# Exclusion list for Heron 156 qubits to get a line.
+HERON_EXCLUDE = [
+    16,
+    17,
+    18,
+    37,
+    38,
+    39,
+    56,
+    57,
+    58,
+    77,
+    78,
+    79,
+    96,
+    97,
+    98,
+    117,
+    118,
+    119,
+    136,
+    137,
+    138,
+]
+
+
+def get_a_path(backend: Backend, length: int, nodes_to_exclude: List[int] = None):
+    """Finding good paths at utility-scale can be very time inefficient.
+
+    This function returns a path without any consideration for fidelity.
+    Furthermore, it requires that the user remove nodes from the backend to
+    simplify its coupling map to limit the space of simple paths.
+
+    args:
+        backend: The backend for which we want to get a path.
+        nodes_to_exclude:
+    """
+
+    coupling_map = CouplingMap(backend.coupling_map)
+
+    # Remove nodes to simplify the coupling map
+    nodes_to_exclude = nodes_to_exclude or HERON_EXCLUDE
+
+    for node in nodes_to_exclude:
+        coupling_map.graph.remove_node(node)
+
+    all_paths = rx.all_pairs_all_simple_paths(
+        coupling_map.graph,
+        min_depth=length,
+        cutoff=length,
+    ).values()
+
+    paths = np.asarray(
+        [
+            (list(c), list(sorted(list(c))))
+            for a in iter(all_paths)
+            for b in iter(a)
+            for c in iter(a[b])
+        ]
+    )
+
+    # filter out duplicated paths
+    _, unique_indices = np.unique(paths[:, 1], return_index=True, axis=0)
+    paths = paths[:, 0][unique_indices].tolist()
+
+    return paths[0]
+
+
 def make_qaoa_circuit(
     file_name: str,
     problem_class: str,
     reps: int,
     backend,
     sat_timeout: int = 60,
+    find_layout: bool = False,
+    meas_threshold: float = 0.99,
 ):
     """Specify a problem instance by name and make a hardware native QAOA circuit.
 
@@ -53,6 +127,12 @@ def make_qaoa_circuit(
         file_name: The name of the file in which there is a graph to load.
         problem_class: Either `maxcut` or `mis:X` where `X` is the value of the penalty.
         reps: The number of QAOA layers.
+        find_layout: Find a layout of qubits to use. This can take a lot of time depending on
+            the problem size. If this is set to false then we chose a simple line on the
+            heavy-hex map without any considerations for fidelity.
+        meas_threshold: When looking for heavy-hex rings we exclude qubits with a measurement
+            fidelity below this threshold. For large graves this likely needs to be reduced
+            from the default value.
     """
 
     # 1. Load and pre-process data into a cost-operator.
@@ -123,7 +203,11 @@ def make_qaoa_circuit(
     ## 3.2 Find a qubit layout that is good.
     layout_info = {}
     if graph_type == "heavy_hex":
-        best_layout, quality, num_subsets = get_best_hex_ring(file_name, backend)
+        best_layout, quality, num_subsets = get_best_hex_ring(
+            file_name,
+            backend,
+            meas_threshold=meas_threshold,
+        )
         initial_layout = Layout(
             {cost_layer.qregs[0][k]: v for k, v in best_layout.items()}
         )
@@ -131,8 +215,12 @@ def make_qaoa_circuit(
         layout_info["path"] = best_layout
         layout_info["num_subsets"] = num_subsets
     else:
-        path_finder = BackendEvaluator(backend)
-        path, fidelity, num_subsets = path_finder.evaluate(num_qubits)
+        if find_layout:
+            path_finder = BackendEvaluator(backend)
+            path, fidelity, num_subsets = path_finder.evaluate(num_qubits)
+        else:
+            path, fidelity, num_subsets = get_a_path(backend, num_qubits), "NA", "NM"
+
         initial_layout = Layout.from_intlist(path, cost_layer.qregs[0])
         layout_info["path"] = path
         layout_info["fidelity"] = fidelity
@@ -224,7 +312,7 @@ def get_best_hex_ring(file_name: str, backend, meas_threshold: float = 0.99):
         raise ValueError(f"No heavy-hex ring matches found for {file_name}.")
 
     qualities = []
-    max_fid, best_idx = 0, None
+    max_fid, best_idx = 0, 0
     for idx, match_dict in enumerate(match_dicts):
         gate_fidelity = 1.0
         meas_fidelity = float(
@@ -234,14 +322,15 @@ def get_best_hex_ring(file_name: str, backend, meas_threshold: float = 0.99):
             gate_fidelity *= 1 - props.gate_error("cz", (match_dict[u], match_dict[v]))
 
         qualities.append((gate_fidelity, meas_fidelity))
-        if gate_fidelity > max_fid and meas_fidelity > meas_threshold ** graph.order():
+
+        if gate_fidelity > max_fid and meas_fidelity >= meas_threshold ** graph.order():
             best_idx = idx
             max_fid = gate_fidelity
 
-    if best_idx is None:
-        raise ValueError(
-            "No good rings found to execute on. "
-            "Try lowring the meas_threshold or using a different backend."
-        )
+    if qualities[best_idx][0] == 0:
+        warn(f"No good rings found to execute {file_name} on based on gate fidelity.")
+
+    if qualities[best_idx][1] == 0:
+        warn(f"No good rings found to execute on {file_name} based on measurement fidelity.")
 
     return match_dicts[best_idx], qualities[best_idx], len(qualities)
