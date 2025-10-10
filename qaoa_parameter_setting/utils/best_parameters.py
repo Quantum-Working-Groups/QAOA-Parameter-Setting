@@ -105,7 +105,7 @@ class BestParameterManager:
         return iterations
 
     def populate_results(self, result: dict, result_data: list) -> list:
-        """Get the parmaeters for this trainer."""
+        """Get the parmaeters from the `result` dict."""
         iter_keys = self.get_iter_keys(result.keys())
 
         for key in iter_keys:
