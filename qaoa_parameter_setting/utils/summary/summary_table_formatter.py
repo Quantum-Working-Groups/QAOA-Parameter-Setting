@@ -307,7 +307,11 @@ class FancyCountRangeAggregator(AggregatorFormatter):
         _count = vals.count()
         return "{count} [{range}]".format(
             count=self._format_num(_count),
-            range=self._format_range(_min, _max),
+            range=(
+                self._format_num(_min)
+                if _min == _max
+                else self._format_range(_min, _max)
+            ),
         )
 
     def _base_value(self, val: str) -> float:
@@ -415,10 +419,6 @@ def formatted_styler_for(
     # *** Handle styler colours, precision, etc.
     # Set format options
     styler = pivot.style.format(
-        # TODO Check if removing this breaks anything
-        # Pass on precision. If we're plotting num_instances, values are
-        # integers with no decimals.
-        # precision=0 if agg_values == "num_instances" else precision,
         # Set string for missing values, represented by nan.
         na_rep=missing_data_str,
         # We're escaping characters with AggregatorFormatter, not Styler.
