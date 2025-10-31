@@ -9,7 +9,7 @@ from typing import Any, Literal, NoReturn, TypeAlias, TypedDict, overload
 import pandas as pd
 
 import qaoa_parameter_setting.utils.instance as Instance
-from qaoa_training_pipeline.utils.graph_utils import approximation_ratio
+from qaoa_parameter_setting.utils.graph_utils import maxcut_approximation_ratio
 
 
 # *** type aliases to make _data type hints easier.
@@ -218,20 +218,20 @@ class SummaryTable:
         return iterations
 
     @overload
-    def approximation_ratio_for(
+    def maxcut_approximation_ratio(
         self,
         graph_key: GraphKey,
         energy: float,
         return_none: Literal[False],
     ) -> float | NoReturn: ...
     @overload
-    def approximation_ratio_for(
+    def maxcut_approximation_ratio(
         self,
         graph_key: GraphKey,
         energy: float,
         return_none: Literal[True],
     ) -> float | None: ...
-    def approximation_ratio_for(
+    def maxcut_approximation_ratio(
         self, graph_key: GraphKey, energy: float, return_none: bool = False
     ) -> float | None | NoReturn:
         if graph_key not in self._minmax_data:
@@ -248,7 +248,7 @@ class SummaryTable:
         min_cut = self._minmax_data[graph_key]["min_cut"]
         max_cut = self._minmax_data[graph_key]["max_cut"]
         sum_weights = self._minmax_data[graph_key]["sum_of_weights"]
-        return approximation_ratio(
+        return maxcut_approximation_ratio(
             min_cut=min_cut, max_cut=max_cut, sum_weights=sum_weights, energy=energy
         )
 
@@ -374,7 +374,7 @@ class SummaryTable:
         result: ResultDict,
     ) -> dict[str, Any]:
         _heavy_hex_dimensions = Instance.heavy_hex_dimensions(graph_key)
-        _approx_ratio = self.approximation_ratio_for(
+        _approx_ratio = self.maxcut_approximation_ratio(
             graph_key=graph_key, energy=result["energy"], return_none=True
         )
         return {
