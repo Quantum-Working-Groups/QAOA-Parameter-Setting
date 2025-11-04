@@ -1,6 +1,7 @@
 """Code to format a Pandas table generated from SummaryTable."""
 
 from abc import abstractmethod
+from collections.abc import Callable
 from functools import partial
 from typing import Any, Literal, TypeVar
 
@@ -10,6 +11,24 @@ from pandas.io.formats.style import Styler, _background_gradient
 from qaoa_parameter_setting.utils.summary.summary_table import SummaryTable
 
 __slots__ = ["formatted_styler_for"]
+
+
+def __rename_index(obj, rename_func: Callable[[str], str]):
+    """Rename indexes with rename_func."""
+    if isinstance(obj, pd.MultiIndex):
+        # Apply escaping to each level
+        levels = [lvl.map(rename_func) for lvl in obj.levels]
+        # Rebuild the MultiIndex using the same codes
+        return pd.MultiIndex(
+            levels=levels,
+            codes=obj.codes,
+            names=[rename_func(n) if n is not None else None for n in obj.names],
+        )
+    else:
+        # Simple Index
+        return obj.map(rename_func).set_names(
+            [rename_func(n) if n is not None else None for n in obj.names]
+        )
 
 
 def __escape_underscores_index(obj):
@@ -22,20 +41,7 @@ def __escape_underscores_index(obj):
         s = str(x)
         return s.replace("_", r"\_")
 
-    if isinstance(obj, pd.MultiIndex):
-        # Apply escaping to each level
-        levels = [lvl.map(escape) for lvl in obj.levels]
-        # Rebuild the MultiIndex using the same codes
-        return pd.MultiIndex(
-            levels=levels,
-            codes=obj.codes,
-            names=[escape(n) if n is not None else None for n in obj.names],
-        )
-    else:
-        # Simple Index
-        return obj.map(escape).set_names(
-            [escape(n) if n is not None else None for n in obj.names]
-        )
+    return __rename_index(obj, escape)
 
 
 def escape_underscore_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -43,6 +49,20 @@ def escape_underscore_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.columns = __escape_underscores_index(df.columns)
     df.index = __escape_underscores_index(df.index)
+    return df
+
+
+def remove_json_suffix_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove suffix ``".json"`` from columns and indexes, returning a copy."""
+    df = df.copy()
+
+    def _remove_suffix_json(x: str) -> str:
+        if x.endswith(".json"):
+            return x.removesuffix(".json")
+        return x
+
+    df.columns = __rename_index(df.columns, _remove_suffix_json)
+    df.index = __rename_index(df.index, _remove_suffix_json)
     return df
 
 
@@ -415,6 +435,8 @@ def formatted_styler_for(
     # If we are targeting LaTeX, escape underscores.
     if target_format in ["latex", "siunitx"]:
         pivot = escape_underscore_df(pivot)
+    # Remove suffixes ".json" from columns and indexes.
+    pivot = remove_json_suffix_df(pivot)
 
     # *** Handle styler colours, precision, etc.
     # Set format options
