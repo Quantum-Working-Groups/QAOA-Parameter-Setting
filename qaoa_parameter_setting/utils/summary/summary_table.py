@@ -181,8 +181,14 @@ class SummaryTable:
                 )
             self._methods.append(filename.split("/")[-1])
 
-    def add_minmax_cut_data(self, folder_name: str):
-        """Load the min-max cut data from a folder."""
+    def add_minmax_cut_data(self, folder_name: str, replace: bool = False):
+        """Load the min-max cut data from a folder.
+
+        Args:
+            replace: Whether to replace any existing minmax data stored in
+                :class:`SummaryTable`. If False, an error is raised when minmax
+                data for an already stored instance is found.
+        """
         for filename in glob.glob(f"{folder_name}/*.json"):
             filename = filename.replace("\\", "/")
             with open(filename, "r") as fin:
@@ -190,9 +196,11 @@ class SummaryTable:
             graph_path = _data.pop("instance")
             graph_key: GraphKey = graph_path.split("/")[-1]
             result = MinMaxResult(_data)
-            if graph_key in self._minmax_data:
+            if graph_key in self._minmax_data and not replace:
                 raise KeyError(
-                    "Multiple min-max cut data for instance {!r}.".format(graph_key)
+                    "Multiple min-max cut data for instance {!r} and replace=False.".format(
+                        graph_key
+                    )
                 )
             if set(MinMaxResult.__required_keys__) != set(result.keys()):
                 raise ValueError(
