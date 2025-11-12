@@ -3,17 +3,18 @@
 import glob
 import json
 import os
+import warnings
 
 
 class BestParameterManager:
     """Manages the summary of best parameters.
-    
+
     The data is a nested dictionary with the following levels:
     - graph_name
     - energy evaluation method
     - QAOA depth
 
-    The value to the innermost key is a dictionary with the entries `energy`, 
+    The value to the innermost key is a dictionary with the entries `energy`,
     `qaoa_angles`, and `result_file_name`. Here, `result_file_name` corresponds to
     the file in which we found the best parameters for a given QAOA depth.
     """
@@ -54,7 +55,7 @@ class BestParameterManager:
                 raise ValueError(
                     f"Unrecognised energy evaluation in {file_name} for method {config}"
                 )
-            
+
             if evaluation not in self._data:
                 self._data[evaluation] = dict()
 
@@ -67,7 +68,7 @@ class BestParameterManager:
 
             # Loop over the trainers in the result
             results = []
-            self.populate_results(result, results)
+            self.populate_results(result, results, filename=file_name)
 
             for qaoa_angles, energy, trainer in results:
 
@@ -104,8 +105,17 @@ class BestParameterManager:
 
         return iterations
 
-    def populate_results(self, result: dict, result_data: list) -> list:
-        """Get the parmaeters from the `result` dict."""
+    def populate_results(
+        self, result: dict, result_data: list, filename: str | None = None
+    ) -> list:
+        """Get the parameters from the `result` dict.
+
+        Args:
+            result: Input results dictionary to process.
+            result_data: Output list of results.
+            filename: Optional name of original JSON file for results, for
+            warnings. If None, warnings will not refer to a specific file.
+        """
         iter_keys = self.get_iter_keys(result.keys())
 
         for key in iter_keys:
@@ -115,11 +125,20 @@ class BestParameterManager:
             trainer = sub_result["trainer"]["trainer_name"]
 
             # Skip known bugs
-            if trainer == "TQATrainer" and version <= 13:
-                continue
-            
+            if trainer == "TQATrainer" and version < 16:
+                # Double check if the TQATrainer bug in #35 is fixed for this subtrainer.
+                if not sub_result["system_info"].get("tqa_trainer_fix_applied", False):
+                    warnings.warn(
+                        "Result JSON not corrected for TQATrainer bug, for qaoa-training-pipeline<16. Use `fix_saved_tqatrainer.py`"
+                        + (
+                            " on {!r}.".format(filename)
+                            if filename is not None
+                            else "."
+                        )
+                    )
+
             if trainer == "RecursionTrainer":
-                self.populate_results(sub_result, result_data)
+                self.populate_results(sub_result, result_data, filename=filename)
 
             qaoa_angles = sub_result["optimized_qaoa_angles"]
             energy = sub_result["energy"]
@@ -129,15 +148,15 @@ class BestParameterManager:
                 continue
 
             result_data.append((qaoa_angles, energy, trainer))
-    
-    def save_summary(self, file_name, overwrite: bool=False):
+
+    def save_summary(self, file_name, overwrite: bool = False):
         """Dump the data to a file."""
 
         if os.path.isfile(file_name) and not overwrite:
             raise ValueError(f"File {file_name} already exists.")
-        
+
         with open(file_name, "w") as fout:
-                json.dump(self._data, fout)
+            json.dump(self._data, fout)
 
     def get_monotonic_data(self) -> dict:
         """Return data that only contains depths for which `E_p > E_q` for `p > q`."""
