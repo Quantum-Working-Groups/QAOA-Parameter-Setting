@@ -69,7 +69,7 @@ class BestParameterManager:
             results = []
             self.populate_results(result, results)
 
-            for qaoa_angles, energy, trainer in results:
+            for qaoa_angles, energy, trainer, duration in results:
 
                 if qaoa_angles is None or energy is None:
                     continue
@@ -81,6 +81,7 @@ class BestParameterManager:
                         self._data[evaluation][graph][depth] = {
                             "energy": energy,
                             "qaoa_angles": qaoa_angles,
+                            "train_duration": duration,
                             "result_file_name": file_name.split("/")[-1],
                             "trainer": trainer,
                         }
@@ -88,6 +89,7 @@ class BestParameterManager:
                     self._data[evaluation][graph][depth] = {
                         "energy": energy,
                         "qaoa_angles": qaoa_angles,
+                        "train_duration": duration,
                         "result_file_name": file_name.split("/")[-1],
                         "trainer": trainer,
                     }
@@ -123,12 +125,13 @@ class BestParameterManager:
 
             qaoa_angles = sub_result["optimized_qaoa_angles"]
             energy = sub_result["energy"]
+            duration = sub_result["train_duration"]
 
             # Ensure length of 2p
             if len(qaoa_angles) % 2 != 0:
                 continue
 
-            result_data.append((qaoa_angles, energy, trainer))
+            result_data.append((qaoa_angles, energy, trainer, duration))
     
     def save_summary(self, file_name, overwrite: bool=False):
         """Dump the data to a file."""
@@ -137,7 +140,7 @@ class BestParameterManager:
             raise ValueError(f"File {file_name} already exists.")
         
         with open(file_name, "w") as fout:
-                json.dump(self._data, fout)
+                json.dump(self._data, fout, indent=4)
 
     def get_monotonic_data(self) -> dict:
         """Return data that only contains depths for which `E_p > E_q` for `p > q`."""
