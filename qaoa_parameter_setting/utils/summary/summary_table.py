@@ -1,16 +1,16 @@
 """Allows us to parse the training data and summarise each method's performance."""
 
-from collections.abc import Iterable
 import glob
 import json
 import os
+import warnings
+from collections.abc import Iterable
 from typing import Any, Literal, NoReturn, TypeAlias, TypedDict, overload
 
 import pandas as pd
 
 import qaoa_parameter_setting.utils.instance as Instance
 from qaoa_parameter_setting.utils.graph_utils import maxcut_approximation_ratio
-
 
 # *** type aliases to make _data type hints easier.
 GraphKey: TypeAlias = str
@@ -122,7 +122,7 @@ class SummaryTable:
 
             # Loop over the trainers in the result
             results = []
-            self.populate_results(result, results)
+            self.populate_results(result, results, filename=filename)
 
             if graph not in self._data:
                 self._data[graph] = dict()
@@ -181,8 +181,14 @@ class SummaryTable:
                 )
             self._methods.append(filename.split("/")[-1])
 
-    def add_minmax_cut_data(self, folder_name: str):
-        """Load the min-max cut data from a folder."""
+    def add_minmax_cut_data(self, folder_name: str, replace: bool = False):
+        """Load the min-max cut data from a folder.
+
+        Args:
+            replace: Whether to replace any existing minmax data stored in
+                :class:`SummaryTable`. If False, an error is raised when minmax
+                data for an already stored instance is found.
+        """
         for filename in glob.glob(f"{folder_name}/*.json"):
             filename = filename.replace("\\", "/")
             with open(filename, "r") as fin:
@@ -190,9 +196,11 @@ class SummaryTable:
             graph_path = _data.pop("instance")
             graph_key: GraphKey = graph_path.split("/")[-1]
             result = MinMaxResult(_data)
-            if graph_key in self._minmax_data:
+            if graph_key in self._minmax_data and not replace:
                 raise KeyError(
-                    "Multiple min-max cut data for instance {!r}.".format(graph_key)
+                    "Multiple min-max cut data for instance {!r} and replace=False.".format(
+                        graph_key
+                    )
                 )
             if set(MinMaxResult.__required_keys__) != set(result.keys()):
                 raise ValueError(
@@ -294,8 +302,17 @@ class SummaryTable:
         """List of graph keys/JSON filenames that do not have min-max cuts data loaded."""
         return [graph for graph in self._data.keys() if graph not in self._minmax_data]
 
-    def populate_results(self, result: dict, result_data: list) -> list:
-        """Get the parameters from the `result` dict."""
+    def populate_results(
+        self, result: dict, result_data: list, filename: str | None = None
+    ) -> list:
+        """Get the parameters from the `result` dict.
+
+        Args:
+            result: Input results dictionary to process.
+            result_data: Output list of results.
+            filename: Optional name of original JSON file for results, for
+            warnings. If None, warnings will not refer to a specific file.
+        """
         iter_keys = self.get_iter_keys(result.keys())
 
         for key in iter_keys:
@@ -304,12 +321,21 @@ class SummaryTable:
             version = sub_result["system_info"]["qaoa_training_pipeline_version"]
             trainer = sub_result["trainer"]["trainer_name"]
 
-            # # Skip known bugs
-            # if trainer == "TQATrainer" and version <= 13:
-            #     continue
+            # Skip known bugs
+            if trainer == "TQATrainer" and version < 16:
+                # Double check if the TQATrainer bug in #35 is fixed for this subtrainer.
+                if not sub_result["system_info"].get("tqa_trainer_fix_applied", False):
+                    warnings.warn(
+                        "Result JSON not corrected for TQATrainer bug, for qaoa-training-pipeline<16. Use `fix_saved_tqatrainer.py`"
+                        + (
+                            " on {!r}.".format(filename)
+                            if filename is not None
+                            else "."
+                        )
+                    )
 
             if trainer == "RecursionTrainer":
-                self.populate_results(sub_result, result_data)
+                self.populate_results(sub_result, result_data, filename=filename)
 
             qaoa_angles = sub_result["optimized_qaoa_angles"]
             energy = sub_result["energy"]
