@@ -105,7 +105,7 @@ class BestParameterManager:
         return iterations
 
 
-    def restructure_data(self) -> dict:
+    def restructure_data(self):
         """Restructure data from {method: {graph: {depth: {...}}}}
         to {graph: {depth: {...}, 'method': method}}."""
         new_data = {}
@@ -120,7 +120,7 @@ class BestParameterManager:
                 # Add method key
                 new_data[graph]["method"] = method
 
-        return new_data
+        self._data = new_data
 
 
     def populate_results(self, result: dict, result_data: list) -> list:
