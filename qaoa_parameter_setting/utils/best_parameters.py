@@ -104,6 +104,25 @@ class BestParameterManager:
 
         return iterations
 
+
+    def restructure_data(self) -> dict:
+        """Restructure data from {method: {graph: {depth: {...}}}}
+        to {graph: {depth: {...}, 'method': method}}."""
+        new_data = {}
+
+        for method, graphs in self._data.items():
+            for graph, depths in graphs.items():
+                if graph not in new_data:
+                    new_data[graph] = {}
+                # Copy all depth entries
+                for depth, details in depths.items():
+                    new_data[graph][depth] = details
+                # Add method key
+                new_data[graph]["method"] = method
+
+        return new_data
+
+
     def populate_results(self, result: dict, result_data: list) -> list:
         """Get the parmaeters from the `result` dict."""
         iter_keys = self.get_iter_keys(result.keys())
