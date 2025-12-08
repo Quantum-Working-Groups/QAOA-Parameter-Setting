@@ -1,0 +1,148 @@
+{
+    "args": {
+        "input": "../../QAOA-Parameter-Setting/instances/line_to_full//000_10nodes_1swap_layers.json",
+        "problem_class": null,
+        "pre_processing": null,
+        "pre_factor": -0.5,
+        "config": "../../methods/FA_SV_noOpt.json",
+        "save_file": "000N10L2S1_MC_FA_SV_noOpt_10.json",
+        "save": true,
+        "save_dir": "../../results/",
+        "train_kwargs0": "reps:10",
+        "train_kwargs1": null,
+        "train_kwargs2": null,
+        "train_kwargs3": null,
+        "train_kwargs4": null,
+        "train_kwargs5": null,
+        "train_kwargs6": null,
+        "train_kwargs7": null,
+        "train_kwargs8": null,
+        "train_kwargs9": null,
+        "evaluator_init_kwargs0": null,
+        "evaluator_init_kwargs1": null,
+        "evaluator_init_kwargs2": null,
+        "evaluator_init_kwargs3": null,
+        "evaluator_init_kwargs4": null,
+        "evaluator_init_kwargs5": null,
+        "evaluator_init_kwargs6": null,
+        "evaluator_init_kwargs7": null,
+        "evaluator_init_kwargs8": null,
+        "evaluator_init_kwargs9": null
+    },
+    "pre_processing": null,
+    "cost_operator": [
+        [
+            "IIIIIIIIZZ",
+            0.5
+        ],
+        [
+            "IIIIIIZIIZ",
+            0.5
+        ],
+        [
+            "IIIIIIIZZI",
+            -0.5
+        ],
+        [
+            "IIIIIIZZII",
+            0.5
+        ],
+        [
+            "IIIIZIIZII",
+            0.5
+        ],
+        [
+            "IIIIIZZIII",
+            0.5
+        ],
+        [
+            "IIIIZZIIII",
+            -0.5
+        ],
+        [
+            "IIZIIZIIII",
+            0.5
+        ],
+        [
+            "IIIZZIIIII",
+            0.5
+        ],
+        [
+            "IIZZIIIIII",
+            -0.5
+        ],
+        [
+            "ZIIZIIIIII",
+            -0.5
+        ],
+        [
+            "IZZIIIIIII",
+            0.5
+        ],
+        [
+            "ZZIIIIIIII",
+            -0.5
+        ]
+    ],
+    "0": {
+        "system_info": {
+            "python_version": "3.11.13",
+            "system": "Linux",
+            "processor": "x86_64",
+            "platform": "Linux-4.18.0-553.77.1.el8_10.x86_64-x86_64-with-glibc2.28",
+            "qaoa_training_pipeline_version": 20
+        },
+        "optimized_params": [
+            0.6555835372498169,
+            0.5631814864780931,
+            0.5138881653307606,
+            0.49558421683669446,
+            0.4688948671814715,
+            0.4357432798966732,
+            0.3884706701377942,
+            0.29117618969626957,
+            0.21050904544590224,
+            0.11238794493527438,
+            0.26671636739366406,
+            0.544822698106431,
+            0.6099810245305547,
+            0.6562600851574694,
+            0.6957083572595683,
+            0.7287573975239775,
+            0.7738775819972508,
+            0.882111389799642,
+            1.0438010077525992,
+            1.1152592242707038
+        ],
+        "optimized_qaoa_angles": [
+            0.6555835372498169,
+            0.5631814864780931,
+            0.5138881653307606,
+            0.49558421683669446,
+            0.4688948671814715,
+            0.4357432798966732,
+            0.3884706701377942,
+            0.29117618969626957,
+            0.21050904544590224,
+            0.11238794493527438,
+            0.26671636739366406,
+            0.544822698106431,
+            0.6099810245305547,
+            0.6562600851574694,
+            0.6957083572595683,
+            0.7287573975239775,
+            0.7738775819972508,
+            0.882111389799642,
+            1.0438010077525992,
+            1.1152592242707038
+        ],
+        "train_duration": 0.058811187744140625,
+        "energy": 4.050555671986092,
+        "trainer": {
+            "trainer_name": "FixedAngleConjecture",
+            "evaluator": null
+        },
+        "approximation ratio": 0.8785275447411593,
+        "degree": "3"
+    }
+}
