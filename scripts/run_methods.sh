@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eu
+set -o pipefail
 shopt -s nullglob
 
 DIR1=""
 DIR2=""
 SAVE_DIR=""
 DEPTHS=()
+USE_GPU=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -21,13 +23,17 @@ while [[ $# -gt 0 ]]; do
             SAVE_DIR="$2"
             shift 2
             ;;
-	--depths)
+        --depths)
             shift
             while [[ $# -gt 0 && $1 != --* ]]; do
                 DEPTHS+=("$1")
                 shift
             done
-	    ;;
+            ;;
+        --gpu)
+            USE_GPU=true
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
             exit 1
@@ -41,27 +47,44 @@ if [[ -z "$DIR1" || -z "$DIR2" || -z "$SAVE_DIR" ]]; then
 fi
 
 for file1 in "$DIR1"/*; do
-  for file2 in "$DIR2"/*; do
-    base1=${file1##*/}
-    base1=${base1%.json}
-    base2=${file2##*/} 
-    base2=${base2%.json}
-    if [[ "$base2" == *interp* || "$base2" == *transitionstates* ]]; then
-      tk_flag="--train_kwargs2"
-    else
-      tk_flag="--train_kwargs0"
-    fi
+    for file2 in "$DIR2"/*; do
+        base1=${file1##*/}
+        base1=${base1%.json}
+        base2=${file2##*/}
+        base2=${base2%.json}
 
-    for depth in "${DEPTHS[@]}"; do
-      echo "Processing: $file1 with $file2 and depth $depth"
-      python -m train \
-        --input "$file1" \
-        --config "$file2" \
-        --save \
-        --save_dir "$SAVE_DIR" \
-        --save_file "__${base1}_${base2}_depth_${depth}.json" \
-        --pre_factor -0.5 \
-        "$tk_flag" "reps:$depth"
+        # Pass 'reps' to the correct trainer in the chain (index 2 for recursive/interp methods)
+        tk_flag="--train_kwargs0"
+        if grep -Eq '"trainer":\s*"(Recursion)Trainer"' "$file2"; then
+            tk_flag="--train_kwargs2"
+        elif [[ "$base2" == *interp* || "$base2" == *transitionstates* ]]; then
+            tk_flag="--train_kwargs2"
+        fi
+
+        for depth in "${DEPTHS[@]}"; do
+            echo "Processing: $file1 with $file2 and depth $depth"
+
+            # Create a temporary config file to allow modifications on-the-fly
+            temp_config=$(mktemp /tmp/temp_config_XXXXXX.json)
+            cp "$file2" "$temp_config"
+
+            # Enable GPU if --gpu flag is set and method file contains "SV"
+            if [[ "$USE_GPU" == true && "$file2" == *"SV"* ]]; then
+                python3 "$(dirname "$0")/enable_gpu.py" "$temp_config"
+            fi
+
+            # Execute the command with temp config (which may have GPU settings)
+            python -m train \
+                --input "$file1" \
+                --config "$temp_config" \
+                --save \
+                --save_dir "$SAVE_DIR" \
+                --save_file "__${base1}_${base2}_depth_${depth}.json" \
+                --pre_factor -0.5 \
+                "$tk_flag" "reps:$depth"
+
+            # Remove the temporary config file
+            rm -f "$temp_config"
+        done
     done
-  done
 done
