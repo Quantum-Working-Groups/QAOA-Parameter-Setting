@@ -12,6 +12,9 @@
 # USAGE:
 #   1. Clean up old environments: rm -rf venv qaoa_training_pipeline qopt-best-practices (if you want to start fresh)
 #   2. Source this script:       source scripts/hpc_initialization.sh
+#
+# If you have already sourced it once in the past and you have created the virtual environment:
+#   1. source venv/bin/activate
 # ==============================================================================
 
 echo "Setting up the environment for QAOA-Parameter-Setting..."

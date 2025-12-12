@@ -64,27 +64,25 @@ for file1 in "$DIR1"/*; do
         for depth in "${DEPTHS[@]}"; do
             echo "Processing: $file1 with $file2 and depth $depth"
 
-            # Create a temporary config file to allow modifications on-the-fly
-            temp_config=$(mktemp /tmp/temp_config_XXXXXX.json)
-            cp "$file2" "$temp_config"
-
-            # Enable GPU if --gpu flag is set and method file contains "SV"
+            # Prepare GPU arguments if requested
+            gpu_args=""
             if [[ "$USE_GPU" == true && "$file2" == *"SV"* ]]; then
-                python3 "$(dirname "$0")/enable_gpu.py" "$temp_config"
+                indices=$(python3 "$(dirname "$0")/get_sv_indices.py" "$file2")
+                for idx in $indices; do
+                    gpu_args="$gpu_args --evaluator_init_kwargs$idx GPU"
+                done
             fi
 
-            # Execute the command with temp config (which may have GPU settings)
+            # Execute the command
             python -m train \
                 --input "$file1" \
-                --config "$temp_config" \
+                --config "$file2" \
                 --save \
                 --save_dir "$SAVE_DIR" \
                 --save_file "__${base1}_${base2}_depth_${depth}.json" \
                 --pre_factor -0.5 \
-                "$tk_flag" "reps:$depth"
-
-            # Remove the temporary config file
-            rm -f "$temp_config"
+                "$tk_flag" "reps:$depth" \
+                $gpu_args
         done
     done
 done
