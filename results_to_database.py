@@ -3,9 +3,9 @@ from qaoa_training_pipeline.utils.graph_utils import load_graph, graph_to_operat
 from pathlib import Path
 import json
 
-best_results_path = Path("QAOA-Parameter-Setting/data/training/best_parameters_summary.json")
-instances_path = Path("QAOA-Parameter-Setting/instances")
-database_path = "./angles_data_test.json"
+best_results_path = Path("data/training/best_parameters_summary.json")
+instances_path = Path("instances")
+database_path = "./optimized_angles_database.json"
 
 
 with open(best_results_path, "r") as f:
@@ -38,10 +38,17 @@ for input_file in best_results_SV.keys():
             database_dict = json.load(f)
             
         opt_params = instance_results[depth]["qaoa_angles"]
+        generating_method = instance_results[depth]["result_file_name"]
+        
+        new_entry = {
+            "qaoa_angles": [opt_params],
+            "metadata": [generating_method]
+        }
         
         if features_str not in database_dict.keys():
-            database_dict[features_str] = [opt_params]
+            database_dict[features_str] = new_entry
         else:
-            database_dict[features_str].append(opt_params)
+            database_dict[features_str]["qaoa_angles"].append(opt_params)
+            database_dict[features_str]["metadata"].append(generating_method)
         with open(database_path, "w") as f:
             json.dump(database_dict,f,indent=4, sort_keys=True)
