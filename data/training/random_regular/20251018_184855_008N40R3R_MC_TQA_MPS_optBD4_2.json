@@ -1,0 +1,895 @@
+{
+    "args": {
+        "input": "../../QAOA-Parameter-Setting/instances/random_regular/008_40nodes_random3regular.json",
+        "problem_class": null,
+        "pre_processing": "sat:60",
+        "pre_factor": -0.5,
+        "config": "../../Temp_QAOA_Methods/TQA_MPS_opt.json",
+        "save_file": "008N40R3R_MC_TQA_MPS_optBD4_2.json",
+        "save": true,
+        "save_dir": "../../qaoa_results/",
+        "train_kwargs0": "reps:2",
+        "train_kwargs1": null,
+        "train_kwargs2": null,
+        "train_kwargs3": null,
+        "train_kwargs4": null,
+        "train_kwargs5": null,
+        "train_kwargs6": null,
+        "train_kwargs7": null,
+        "train_kwargs8": null,
+        "train_kwargs9": null,
+        "evaluator_init_kwargs0": null,
+        "evaluator_init_kwargs1": null,
+        "evaluator_init_kwargs2": null,
+        "evaluator_init_kwargs3": null,
+        "evaluator_init_kwargs4": null,
+        "evaluator_init_kwargs5": null,
+        "evaluator_init_kwargs6": null,
+        "evaluator_init_kwargs7": null,
+        "evaluator_init_kwargs8": null,
+        "evaluator_init_kwargs9": null
+    },
+    "pre_processing": {
+        "pre_processor_name": "SATMapper",
+        "duration": 62.88714027404785,
+        "timeout": 60,
+        "min_k": 8,
+        "edge_map": {
+            "0": 36,
+            "1": 2,
+            "2": 33,
+            "3": 12,
+            "4": 17,
+            "5": 14,
+            "6": 25,
+            "7": 32,
+            "8": 37,
+            "9": 29,
+            "10": 9,
+            "11": 4,
+            "12": 11,
+            "13": 20,
+            "14": 23,
+            "15": 22,
+            "16": 31,
+            "17": 38,
+            "18": 10,
+            "19": 19,
+            "20": 24,
+            "21": 39,
+            "22": 3,
+            "23": 28,
+            "24": 16,
+            "25": 13,
+            "26": 27,
+            "27": 30,
+            "28": 34,
+            "29": 6,
+            "30": 35,
+            "31": 5,
+            "32": 21,
+            "33": 26,
+            "34": 8,
+            "35": 7,
+            "36": 15,
+            "37": 18,
+            "38": 0,
+            "39": 1
+        }
+    },
+    "cost_operator": [
+        [
+            "ZIIIIIIIIIIIIIIIIZIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIZIIIIZIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIZIIIIIIZIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "ZZIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "ZIIIIIIZIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIZIIIIIIIIIIIIIIIIZIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIZIIIIIIIIZIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIZIIIIIIIIIIIIIIIIZIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIZZIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IZIZIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IZIIIZIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIZZIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIZIZIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIZZIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIZIIIIIIIZIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIZIIIIIIIIIIIIIIZIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIZIIIIIIIIZIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIZIIZIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIZIIIIIZIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIZIIZIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIZIIIIIIIIIIIIIIIIZIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIZZIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIZIIIIIIIIIIZIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIZIIIIIIIIIIIIIIZIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIZZIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIZIIIIIIIIIIIIZIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIZZIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIZIZIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIZIIIIIIIIZ",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIZIIIIIIIIIIIIIIIIZIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIZIIIIIZI",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIZIIIZIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIZIIIIZ",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIZIIZ",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIZIIIIIIZIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIZZIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIZIIIIZIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIZIIIIIIIIIIIIIIIIZIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIZZIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIZIIIIZIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIZIIIIIIIIIIIIIIZIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIZIIIIIIIIIIIIIIIIZIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIZIIIIIIIIZIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIZIIIIIIIIIIIIIIZIIIIIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIZIIIIIIIIIIIIIIIIZIIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIZZIIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIIIZZIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIIZZIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIIIZIIIIIZIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIZZI",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIZIIIZI",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIZIIIIIIIIIZIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIZIIIIIIIIIIIIIIIIZII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIZIIIIIIIIIIIIIIZII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIZIIIIIIIIIIZIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIZIIIIIIIIIIIIZIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIZIIIIIIIIIIIIZIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIZIIIIIIZIIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIIIIIIIIIIIIIIIIZIIIIIIIIZIIII",
+            -0.5
+        ],
+        [
+            "IIIIIZIIIZIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+            -0.5
+        ]
+    ],
+    "0": {
+        "system_info": {
+            "python_version": "3.12.11",
+            "system": "Linux",
+            "processor": "x86_64",
+            "platform": "Linux-4.18.0-553.77.1.el8_10.x86_64-x86_64-with-glibc2.28",
+            "qaoa_training_pipeline_version": 13,
+            "tqa_trainer_fix_applied": true
+        },
+        "optimized_params": [
+            0.8029
+        ],
+        "optimized_qaoa_angles": [
+            0.799275,
+            0.3978250000000001,
+            0.200725,
+            0.6021749999999999
+        ],
+        "train_duration": 5.98534083366394,
+        "energy": 5.844605612860134,
+        "trainer": {
+            "trainer_name": "TQATrainer",
+            "evaluator": {
+                "name": "MPSEvaluator",
+                "threshold_circuit": null,
+                "bond_dim_circuit": 4,
+                "threshold_cost": null,
+                "bond_dim_mpo": null
+            }
+        },
+        "x0": [
+            0.75
+        ],
+        "success": "True",
+        "energy_history": [
+            5.4193564220041495,
+            5.6944356928458655,
+            5.625823245456996,
+            5.74821933633876,
+            5.2496848904589966,
+            5.6944356928458655,
+            5.608886506529874,
+            5.6353948455500396,
+            5.629184562747407,
+            5.526796399668991,
+            5.723832885737362,
+            5.837360686591259,
+            5.842640171667203,
+            5.649898824678778,
+            5.653017516401708,
+            5.598592662756474,
+            5.844605612860134,
+            5.6539298839669
+        ],
+        "parameter_history": [
+            [
+                0.75
+            ],
+            [
+                0.85
+            ],
+            [
+                0.95
+            ],
+            [
+                0.7999999999999999
+            ],
+            [
+                0.7
+            ],
+            [
+                0.85
+            ],
+            [
+                0.7749999999999999
+            ],
+            [
+                0.8099999999999999
+            ],
+            [
+                0.7899999999999999
+            ],
+            [
+                0.8049999999999999
+            ],
+            [
+                0.7975
+            ],
+            [
+                0.8009999999999999
+            ],
+            [
+                0.8029999999999999
+            ],
+            [
+                0.8039999999999999
+            ],
+            [
+                0.8025
+            ],
+            [
+                0.8032499999999999
+            ],
+            [
+                0.8029
+            ],
+            [
+                0.8028
+            ]
+        ],
+        "energy_evaluation_time": [
+            1.202132225036621,
+            0.3006601333618164,
+            0.29958510398864746,
+            0.3009941577911377,
+            0.3098468780517578,
+            0.30007243156433105,
+            0.30322790145874023,
+            0.3018357753753662,
+            0.26342320442199707,
+            0.2653067111968994,
+            0.2653388977050781,
+            0.2642481327056885,
+            0.26162171363830566,
+            0.26199889183044434,
+            0.2626214027404785,
+            0.2636847496032715,
+            0.263638973236084,
+            0.26303911209106445
+        ]
+    },
+    "1": {
+        "system_info": {
+            "python_version": "3.12.11",
+            "system": "Linux",
+            "processor": "x86_64",
+            "platform": "Linux-4.18.0-553.77.1.el8_10.x86_64-x86_64-with-glibc2.28",
+            "qaoa_training_pipeline_version": 13
+        },
+        "optimized_params": [
+            0.6362627312127662,
+            0.3677091136566659,
+            0.42704567461246573,
+            0.6449376048199634
+        ],
+        "optimized_qaoa_angles": [
+            0.6362627312127662,
+            0.3677091136566659,
+            0.42704567461246573,
+            0.6449376048199634
+        ],
+        "train_duration": 11.82956838607788,
+        "energy": 6.919213290332246,
+        "trainer": {
+            "trainer_name": "ScipyTrainer",
+            "evaluator": {
+                "name": "MPSEvaluator",
+                "threshold_circuit": null,
+                "bond_dim_circuit": 4,
+                "threshold_cost": null,
+                "bond_dim_mpo": null
+            },
+            "qaoa_angles_function": {
+                "function_name": "IdentityFunction"
+            },
+            "minimize_args": {
+                "method": "COBYLA",
+                "options": {
+                    "maxiter": 50,
+                    "rhobeg": 0.2
+                }
+            },
+            "energy_minimization": false
+        },
+        "x0": [
+            0.799275,
+            0.3978250000000001,
+            0.200725,
+            0.6021749999999999
+        ],
+        "success": "True",
+        "energy_history": [
+            5.844605612860134,
+            4.983323683903536,
+            3.9076981906074453,
+            5.962053826699795,
+            5.823901749314494,
+            5.134939858934982,
+            5.8907731293202765,
+            5.794352461061532,
+            6.09175522305526,
+            6.189160546710825,
+            5.357310861296275,
+            6.189584950278932,
+            6.320022551338058,
+            6.600812361894488,
+            6.581163684923533,
+            6.7614758082217685,
+            6.85840222192758,
+            6.763951951616874,
+            6.89555015308799,
+            6.751884955914201,
+            6.807291832829255,
+            6.8982737718509215,
+            6.8747001653994815,
+            6.840059593576814,
+            6.821089558893804,
+            6.887254789521552,
+            6.88562050052197,
+            6.860855390149496,
+            6.872544655496886,
+            6.764579690516962,
+            6.919213290332246,
+            6.7465885231198115,
+            6.917898275258099,
+            6.742260095194252,
+            6.855865896017561,
+            6.856467851390384,
+            6.825568029020911,
+            6.746573287897729,
+            6.919144890337504,
+            6.705527613041916,
+            6.660258259636348,
+            6.856469725871998,
+            6.724508568379771
+        ],
+        "parameter_history": [
+            [
+                0.799275,
+                0.3978250000000001,
+                0.200725,
+                0.6021749999999999
+            ],
+            [
+                0.9992749999999999,
+                0.3978250000000001,
+                0.200725,
+                0.6021749999999999
+            ],
+            [
+                0.799275,
+                0.597825,
+                0.200725,
+                0.6021749999999999
+            ],
+            [
+                0.799275,
+                0.3978250000000001,
+                0.400725,
+                0.6021749999999999
+            ],
+            [
+                0.799275,
+                0.3978250000000001,
+                0.400725,
+                0.8021749999999999
+            ],
+            [
+                0.7183087906809809,
+                0.2157428657891294,
+                0.41176591046866273,
+                0.5891877891467704
+            ],
+            [
+                0.7446580688066774,
+                0.4807995198335293,
+                0.4081728063435401,
+                0.5934142884941769
+            ],
+            [
+                0.820157141044697,
+                0.4115704059739748,
+                0.400725,
+                0.6021749999999999
+            ],
+            [
+                0.7615052880370999,
+                0.3657430439428617,
+                0.40503102112459144,
+                0.5971099100835247
+            ],
+            [
+                0.7326138138367524,
+                0.328531830937852,
+                0.4158810346306395,
+                0.58434724765968
+            ],
+            [
+                0.7209259000488714,
+                0.2469211594590397,
+                0.4535375758863728,
+                0.5420970894029388
+            ],
+            [
+                0.7267054194180931,
+                0.34045243269717007,
+                0.41613594183306907,
+                0.5631830053768236
+            ],
+            [
+                0.6854254529963565,
+                0.35851017334276497,
+                0.41472424350254733,
+                0.5848137585495712
+            ],
+            [
+                0.637761069443449,
+                0.35323123083976404,
+                0.424601915345622,
+                0.594946423822433
+            ],
+            [
+                0.5650868016622713,
+                0.2909169097207824,
+                0.4001102731178022,
+                0.5795992531732684
+            ],
+            [
+                0.6385962095801516,
+                0.35363775028555855,
+                0.4089086860858991,
+                0.6143850410133248
+            ],
+            [
+                0.6262717667061917,
+                0.3526322864616793,
+                0.42227666329145114,
+                0.6609510622710746
+            ],
+            [
+                0.6100385729877222,
+                0.38207441764680383,
+                0.38926044094705964,
+                0.6776715106825936
+            ],
+            [
+                0.6338067698154523,
+                0.35859919201167667,
+                0.42462645685347056,
+                0.6623995913583683
+            ],
+            [
+                0.6486837349455046,
+                0.3502260118442002,
+                0.4190739708502285,
+                0.6712163743082876
+            ],
+            [
+                0.630864799912301,
+                0.3583123601077538,
+                0.4298634375230449,
+                0.6703893707054059
+            ],
+            [
+                0.6360414331497998,
+                0.3680921724092635,
+                0.42753960055137863,
+                0.6451832271443859
+            ],
+            [
+                0.6264711622107396,
+                0.36511265592880987,
+                0.43162722597860465,
+                0.6283658636749719
+            ],
+            [
+                0.6424103880785569,
+                0.3612972345815663,
+                0.4307972834946151,
+                0.6435545052913565
+            ],
+            [
+                0.6351925552974579,
+                0.3774389962583366,
+                0.4100547694895652,
+                0.6426938551219581
+            ],
+            [
+                0.6325450406585682,
+                0.3739370296406042,
+                0.43389536982160465,
+                0.6488187574325495
+            ],
+            [
+                0.6375282490595459,
+                0.36974109305528247,
+                0.42749800839316726,
+                0.6440348764810283
+            ],
+            [
+                0.6329007452128916,
+                0.36781813561332877,
+                0.4240879523269411,
+                0.6469572360654938
+            ],
+            [
+                0.6367856659945004,
+                0.36810613487790017,
+                0.4273700143033788,
+                0.6461730064262603
+            ],
+            [
+                0.6350707742830448,
+                0.3670579544489997,
+                0.4287388899891093,
+                0.6435099311694893
+            ],
+            [
+                0.6362627312127662,
+                0.3677091136566659,
+                0.42704567461246573,
+                0.6449376048199634
+            ],
+            [
+                0.6356012698930662,
+                0.3682277055224503,
+                0.4259089851745299,
+                0.644975926106061
+            ],
+            [
+                0.6365332905224421,
+                0.3672547040561079,
+                0.4274358526776197,
+                0.6446767012892456
+            ],
+            [
+                0.6361547716061612,
+                0.3675960278683396,
+                0.42704398917901926,
+                0.6450200880736239
+            ],
+            [
+                0.6364757467131039,
+                0.36793159206703424,
+                0.4270398777575059,
+                0.6447641281644491
+            ],
+            [
+                0.6362039927006536,
+                0.3677141049751988,
+                0.4270482127910013,
+                0.6448717950062285
+            ],
+            [
+                0.6363521753837372,
+                0.3676687971908643,
+                0.4270339004273054,
+                0.6450841848030047
+            ],
+            [
+                0.6362458302297248,
+                0.36773591723960297,
+                0.42700994753273397,
+                0.6449524203688162
+            ],
+            [
+                0.636282043396463,
+                0.36765341321083067,
+                0.4271160404710652,
+                0.6448979419174199
+            ],
+            [
+                0.6362755402912182,
+                0.36768174143510785,
+                0.4270102378543274,
+                0.6449194134712275
+            ],
+            [
+                0.636224778374652,
+                0.36776312258557264,
+                0.42711505291503504,
+                0.6449664018477619
+            ],
+            [
+                0.6362249628081404,
+                0.36768016188020675,
+                0.4270414325176269,
+                0.6449523475091097
+            ],
+            [
+                0.6363126611075647,
+                0.36769397819102284,
+                0.42698573827900305,
+                0.6448768960132198
+            ]
+        ],
+        "energy_evaluation_time": [
+            0.369931697845459,
+            0.3293018341064453,
+            0.32897162437438965,
+            0.3297104835510254,
+            0.33083343505859375,
+            0.28377652168273926,
+            0.2624986171722412,
+            0.2618718147277832,
+            0.2595360279083252,
+            0.25945329666137695,
+            0.2603335380554199,
+            0.3217196464538574,
+            0.26538515090942383,
+            0.26247072219848633,
+            0.26418519020080566,
+            0.2636704444885254,
+            0.26326942443847656,
+            0.2658562660217285,
+            0.2678232192993164,
+            0.2618682384490967,
+            0.2623882293701172,
+            0.2649364471435547,
+            0.2641901969909668,
+            0.26608824729919434,
+            0.26470303535461426,
+            0.2676379680633545,
+            0.2634108066558838,
+            0.2627999782562256,
+            0.2638223171234131,
+            0.2647733688354492,
+            0.2629890441894531,
+            0.2662935256958008,
+            0.26528024673461914,
+            0.26253700256347656,
+            0.26280736923217773,
+            0.26601314544677734,
+            0.2626011371612549,
+            0.2635679244995117,
+            0.2607460021972656,
+            0.2658078670501709,
+            0.2647054195404053,
+            0.26334095001220703,
+            0.26662254333496094
+        ],
+        "circuit_bond_dimension": [
+            2,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            2
+        ]
+    }
+}
