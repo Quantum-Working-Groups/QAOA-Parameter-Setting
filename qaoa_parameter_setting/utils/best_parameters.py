@@ -39,6 +39,9 @@ class BestParameterManager:
 
         for file_name in glob.glob(f"{folder_name}/*.json"):
             file_name = file_name.replace("\\", "/")
+
+            if "MIS" in file_name:
+                continue
             with open(file_name, "r") as fin:
                 result = json.load(fin)
 
