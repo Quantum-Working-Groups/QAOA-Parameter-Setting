@@ -1,0 +1,322 @@
+{
+    "args": {
+        "input": "instances/line_to_full/001_15nodes_2swap_layers.json",
+        "problem_class": null,
+        "pre_processing": null,
+        "pre_factor": -0.5,
+        "config": "methods/LR_SV_opt.json",
+        "save_file": "001N15L2S2_MC_LR_SV_opt_10.json",
+        "save": true,
+        "save_dir": "data/training/line_to_full/",
+        "train_kwargs0": "reps: 10",
+        "train_kwargs1": null,
+        "train_kwargs2": null,
+        "train_kwargs3": null,
+        "train_kwargs4": null,
+        "train_kwargs5": null,
+        "train_kwargs6": null,
+        "train_kwargs7": null,
+        "train_kwargs8": null,
+        "train_kwargs9": null,
+        "evaluator_init_kwargs0": null,
+        "evaluator_init_kwargs1": null,
+        "evaluator_init_kwargs2": null,
+        "evaluator_init_kwargs3": null,
+        "evaluator_init_kwargs4": null,
+        "evaluator_init_kwargs5": null,
+        "evaluator_init_kwargs6": null,
+        "evaluator_init_kwargs7": null,
+        "evaluator_init_kwargs8": null,
+        "evaluator_init_kwargs9": null
+    },
+    "pre_processing": null,
+    "cost_operator": [
+        [
+            "IIIIIIIIIIIIIZZ",
+            0.5
+        ],
+        [
+            "IIIIIIIIIIIZIIZ",
+            0.5
+        ],
+        [
+            "IIIIIIIIIZIIIIZ",
+            0.5
+        ],
+        [
+            "IIIIIIIIIIIIZZI",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIZIZI",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIIZZII",
+            0.5
+        ],
+        [
+            "IIIIIIIIIZIIZII",
+            -0.5
+        ],
+        [
+            "IIIIIIIZIIIIZII",
+            -0.5
+        ],
+        [
+            "IIIIIIIIIIZZIII",
+            0.5
+        ],
+        [
+            "IIIIIIIIIZZIIII",
+            0.5
+        ],
+        [
+            "IIIIIIIZIIZIIII",
+            0.5
+        ],
+        [
+            "IIIIIZIIIIZIIII",
+            0.5
+        ],
+        [
+            "IIIIIIIIZZIIIII",
+            0.5
+        ],
+        [
+            "IIIIIIIZZIIIIII",
+            0.5
+        ],
+        [
+            "IIIIIZIIZIIIIII",
+            0.5
+        ],
+        [
+            "IIIZIIIIZIIIIII",
+            0.5
+        ],
+        [
+            "IIIIIIZZIIIIIII",
+            0.5
+        ],
+        [
+            "IIIIIZZIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIIZIIZIIIIIIII",
+            0.5
+        ],
+        [
+            "IZIIIIZIIIIIIII",
+            0.5
+        ],
+        [
+            "IIIIZZIIIIIIIII",
+            0.5
+        ],
+        [
+            "IIIZZIIIIIIIIII",
+            0.5
+        ],
+        [
+            "IZIIZIIIIIIIIII",
+            0.5
+        ],
+        [
+            "ZIIIZIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IIZZIIIIIIIIIII",
+            -0.5
+        ],
+        [
+            "IZZIIIIIIIIIIII",
+            0.5
+        ],
+        [
+            "ZIZIIIIIIIIIIII",
+            0.5
+        ],
+        [
+            "ZZIIIIIIIIIIIII",
+            -0.5
+        ]
+    ],
+    "0": {
+        "system_info": {
+            "python_version": "3.10.18",
+            "system": "Darwin",
+            "processor": "i386",
+            "platform": "macOS-15.6-x86_64-i386-64bit",
+            "qaoa_training_pipeline_version": 24
+        },
+        "optimized_params": [
+            0.7479288838891105,
+            1.019933999703469
+        ],
+        "optimized_qaoa_angles": [
+            0.7479288838891105,
+            0.6731359955001994,
+            0.5983431071112884,
+            0.5235502187223774,
+            0.4487573303334663,
+            0.37396444194455525,
+            0.2991715535556442,
+            0.22437866516673316,
+            0.1495857767778221,
+            0.07479288838891104,
+            0.10199339997034691,
+            0.20398679994069382,
+            0.3059801999110407,
+            0.40797359988138765,
+            0.5099669998517345,
+            0.6119603998220814,
+            0.7139537997924283,
+            0.8159471997627753,
+            0.9179405997331221,
+            1.019933999703469
+        ],
+        "train_duration": 2.1549439430236816,
+        "energy": 8.646359955077708,
+        "trainer": {
+            "trainer_name": "TQATrainer",
+            "evaluator": {
+                "name": "StatevectorEvaluator",
+                "statevector_init_args": {}
+            }
+        },
+        "x0": [
+            0.5,
+            0.5
+        ],
+        "success": "False",
+        "energy_history": [
+            7.569699933383087,
+            7.560094648782486,
+            7.9421549206065025,
+            8.131085020934133,
+            8.146266280250805,
+            8.287231021108454,
+            8.402037476529475,
+            8.47740618871513,
+            8.602201928511725,
+            8.63199313320147,
+            8.514618475813625,
+            8.563128048265652,
+            8.611601593850752,
+            8.612229896777045,
+            8.642949272036157,
+            8.646359955077708,
+            8.638033757567623,
+            8.64515830797527,
+            8.645615688590459,
+            8.646263445080972
+        ],
+        "parameter_history": [
+            [
+                0.5,
+                0.5
+            ],
+            [
+                0.6,
+                0.5
+            ],
+            [
+                0.5,
+                0.6
+            ],
+            [
+                0.49742194563413267,
+                0.6999667626548276
+            ],
+            [
+                0.42411668154033455,
+                0.76798395354168
+            ],
+            [
+                0.4875524780574002,
+                0.8452878972977746
+            ],
+            [
+                0.5472890138526153,
+                0.925484819253589
+            ],
+            [
+                0.5842526300202789,
+                1.0184024767779243
+            ],
+            [
+                0.6840965540716707,
+                1.023987351890218
+            ],
+            [
+                0.7808645385735554,
+                1.049205543249691
+            ],
+            [
+                0.7671767737610679,
+                1.148264339398433
+            ],
+            [
+                0.8283662210760543,
+                0.9612078719200938
+            ],
+            [
+                0.8046153798248048,
+                1.0052067075848925
+            ],
+            [
+                0.7879850311903486,
+                1.0731700708873098
+            ],
+            [
+                0.7565476419967371,
+                1.0434013602001722
+            ],
+            [
+                0.7479288838891105,
+                1.019933999703469
+            ],
+            [
+                0.7229581400381251,
+                1.0211431115793825
+            ],
+            [
+                0.7575925660344774,
+                1.0120053650547218
+            ],
+            [
+                0.7421443709075449,
+                1.01756716435514
+            ],
+            [
+                0.7492492623421538,
+                1.02604293584168
+            ]
+        ],
+        "energy_evaluation_time": [
+            0.09479761123657227,
+            0.08936500549316406,
+            0.08932018280029297,
+            0.09067821502685547,
+            0.09235787391662598,
+            0.11161279678344727,
+            0.1380150318145752,
+            0.12204217910766602,
+            0.11479616165161133,
+            0.10721182823181152,
+            0.1074380874633789,
+            0.11027812957763672,
+            0.10750579833984375,
+            0.10973906517028809,
+            0.10795998573303223,
+            0.10779690742492676,
+            0.11504387855529785,
+            0.11802291870117188,
+            0.11082291603088379,
+            0.10736632347106934
+        ]
+    }
+}

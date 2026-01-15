@@ -71,11 +71,23 @@ class HarwareExecutor:
                     summary_dict[depth] = data_entry
                 else:
                     energy = _res[1]
-                    if energy > summary_dict[depth][1]:
-                        summary_dict[depth] = data_entry
+
+                    if energy is None:
+                        print(f"No energy for {method}")
+                    else:
+                        if energy > summary_dict[depth][1]:
+                            summary_dict[depth] = data_entry
 
             self._all_methods_summary[method] = summary_dict
     
+    def manual_add_parameters(self, qaoa_angles, energy, method: str, file_name: str ="no file"):
+        """Allows us to inject parameters into the _all_methods_summary to construct PUBs."""
+        if len(qaoa_angles) % 2 !=0:
+            raise ValueError("QAOA angles should have length 2.")
+        
+        depth = len(qaoa_angles) // 2
+        self._all_methods_summary[method] = {depth: (qaoa_angles, energy, method, file_name)}
+
     def make_sampler_pub(self, backend, qaoa_depth: int, problem_class: str="maxcut", meas_threshold: float=0.0):
         """Prepares the payload for the Sampler."""
         self._circuit = None
