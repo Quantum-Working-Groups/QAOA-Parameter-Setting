@@ -29,7 +29,14 @@ for input_file in best_results_SV.keys():
     
         cost_op = graph_to_operator(graph, pre_factor=-0.5)
     
-        feature_extractor = GraphFeatureExtractor(extract_num_nodes=False, extract_num_edges= False, extract_density=False)
+        feature_extractor = GraphFeatureExtractor(
+            extract_num_nodes= False,
+            extract_num_edges = False,
+            extract_avg_node_degree = True,
+            extract_avg_edge_weights = False,
+            extract_standard_devs = True,
+            extract_density = False
+        )
     
         features = feature_extractor(cost_op, depth)
         features_str = ", ".join(map(str, features))
