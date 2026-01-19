@@ -24,7 +24,6 @@ from qiskit.transpiler.passes import (
     InverseCancellation,
 )
 
-from qaoa_training_pipeline.pre_processing import SATMapper
 from qaoa_training_pipeline.utils.problem_classes import MaxCut, MaxIndependentSet
 from qaoa_training_pipeline.utils.data_utils import load_input
 from qaoa_training_pipeline.utils.graph_utils import dict_to_graph
@@ -36,6 +35,9 @@ from qopt_best_practices.transpilation.qaoa_construction_pass import (
     QAOAConstructionPass,
 )
 from qopt_best_practices.transpilation.swap_cancellation_pass import SwapToFinalMapping
+from qopt_best_practices.sat_mapping import SATMapper
+
+from qaoa_parameter_setting.transpilation.swap_strategies import make_2d_grid_swap_strategy
 
 
 # Exclusion list for Heron 156 qubits to get a line.
@@ -150,13 +152,6 @@ def make_qaoa_circuit(
     else:
         raise ValueError("Invalid graph type.")
 
-    # 1.1 SAT map problems that need SAT mapping
-    sat_mapper = None
-    if graph_type in ["random_regular", "erdos_renyi"]:
-        if sat_timeout > 0:
-            sat_mapper = SATMapper(timeout=sat_timeout)
-            input_data = sat_mapper(input_data)
-
     if problem_class == "maxcut":
         cost_op = MaxCut().cost_operator(input_data)
     elif problem_class[0:3] == "mis":
@@ -165,14 +160,14 @@ def make_qaoa_circuit(
     else:
         raise ValueError("Invalid problem class.")
 
-    # 2. Get the QAOA cost layer.
     num_qubits = cost_op.num_qubits
 
-    cost_layer = get_cost_layer(cost_op)
+    # 2. Make the hardware native circuit.
 
-    # 3. Make the hardware native circuit.
+    ## 2.1 get an edge coloring and swap network for the router, also do the SAT mapping
+    layout_info = {}
+    sat_mapper, edge_map, min_k = None, "", ""
 
-    ## 3.1 get an edge coloring and swap network for the router
     if graph_type == "heavy_hex":
         graph = dict_to_graph(input_data)
 
@@ -196,12 +191,43 @@ def make_qaoa_circuit(
 
         swap_strat = SwapStrategy(cmap, ())  # no SWAPs needed
     else:
-        edge_coloring = {(idx, idx + 1): (idx + 1) % 2 for idx in range(num_qubits - 1)}
+        if backend.name in ["ibm_miami"]:
+            edge_coloring = None
 
-        swap_strat = SwapStrategy.from_line(range(num_qubits))
+            # Find the smallest rectangular grid that fits the graph.
+            rows, cols = int(np.ceil(np.sqrt(num_qubits))), int(np.floor(np.sqrt(num_qubits)))
+    
+            if rows*cols < num_qubits:
+                if rows < cols:
+                    rows += 1
+                else:
+                    cols += 1
 
-    ## 3.2 Find a qubit layout that is good.
-    layout_info = {}
+            # Seems like the SATMApper preferes more rows?
+            if rows < cols:
+                rows, cols = cols, rows
+
+            print("rows and cols:", rows, cols)
+
+            swap_strat = make_2d_grid_swap_strategy(rows, cols)
+        else:
+            edge_coloring = {(idx, idx + 1): (idx + 1) % 2 for idx in range(num_qubits - 1)}
+
+            swap_strat = SwapStrategy.from_line(range(num_qubits))
+
+        # SAT map problems that need SAT mapping.    
+        if graph_type in ["random_regular", "erdos_renyi"]:
+            if sat_timeout > 0:
+                sat_mapper = SATMapper(timeout=sat_timeout)
+                cost_op, edge_map, min_k = sat_mapper.remap_graph_with_sat(
+                    graph=cost_op, 
+                    swap_strategy=swap_strat,
+                )
+
+    ## 2.2 Get the QAOA cost layer.
+    cost_layer = get_cost_layer(cost_op)
+
+    ## 2.3 Find a qubit layout that is good.
     if graph_type == "heavy_hex":
         best_layout, quality, num_subsets = get_best_hex_ring(
             file_name,
@@ -215,18 +241,36 @@ def make_qaoa_circuit(
         layout_info["path"] = best_layout
         layout_info["num_subsets"] = num_subsets
     else:
-        if find_layout:
-            path_finder = BackendEvaluator(backend)
-            path, fidelity, num_subsets = path_finder.evaluate(num_qubits)
+
+        if backend.name in ["ibm_miami"]:
+            best_layout, quality, num_subsets = get_best_subgrid(
+                rows,
+                cols,
+                backend,
+                meas_threshold=meas_threshold,
+            )
+
+            initial_layout = Layout(
+                {cost_layer.qregs[0][k]: v for k, v in best_layout.items()}
+            )
+            layout_info["fidelity"] = {"2Q gates": quality[0], "meas": quality[1]}
+            layout_info["path"] = best_layout
+            layout_info["num_subsets"] = num_subsets
+
         else:
-            path, fidelity, num_subsets = get_a_path(backend, num_qubits), "NA", "NM"
+            if find_layout:
+                path_finder = BackendEvaluator(backend)
+                path, fidelity, num_subsets = path_finder.evaluate(num_qubits)
+            else:
+                path, fidelity, num_subsets = get_a_path(backend, num_qubits), "NA", "NM"
 
-        initial_layout = Layout.from_intlist(path, cost_layer.qregs[0])
-        layout_info["path"] = path
-        layout_info["fidelity"] = fidelity
-        layout_info["num_subsets"] = num_subsets
+            initial_layout = Layout.from_intlist(path, cost_layer.qregs[0])
 
-    ## 3.3 Construct the pass manager
+            layout_info["path"] = path
+            layout_info["fidelity"] = fidelity
+            layout_info["num_subsets"] = num_subsets
+
+    ## 2.4 Construct the pass manager
 
     # Apply the SWAP strategy to the cost layer.
     pre_init = PassManager(
@@ -254,7 +298,7 @@ def make_qaoa_circuit(
     staged_pm.init = PassManager([QAOAConstructionPass(num_layers=reps)])
     staged_pm.post_init = post_init
 
-    ## 3.4 Run the pass manager
+    ## 2.5 Run the pass manager
     isa_circuit = staged_pm.run(cost_layer)
 
     isa_circuit.metadata["file_name"] = file_name
@@ -262,9 +306,9 @@ def make_qaoa_circuit(
     isa_circuit.metadata["layout_info"] = layout_info
 
     if sat_mapper is not None:
-        isa_circuit.metadata["sat mapper"] = sat_mapper.to_config()
+        isa_circuit.metadata["sat mapper"] = {"sat_edge_map": edge_map, "sat_min_k": min_k}
 
-    # 4. Validation: return the swap routing so that we can check it.
+    # 3. Validation: return the swap routing so that we can check it.
     validation_pm = PassManager(
         [
             PrepareCostLayer(),
@@ -285,15 +329,39 @@ def make_qaoa_circuit(
     return isa_circuit, swap_circuit
 
 
+def get_best_subgrid(rows, cols, backend, meas_threshold: float = 0.99):
+
+    # backend coupling map and properies.
+    props = backend.properties()
+    cmap = nx.from_edgelist(backend.coupling_map.get_edges())
+
+    graph = nx.grid_2d_graph(rows, cols)
+    graph.name = f"{rows}x{cols} 2D grid graph."
+
+    match_dict, quality, num_qualities = get_and_evaluate_matches(cmap, graph, props, meas_threshold)
+
+    # For 2D grids the nodes are indexed by tuples but we need a single number
+    match_dict = {k[0] * cols + k[1]: v for k, v in match_dict.items()}
+
+    return match_dict, quality, num_qualities
+
+
 def get_best_hex_ring(file_name: str, backend, meas_threshold: float = 0.99):
     """This function finds good qubits for heavy-hex graphs."""
 
     graph = dict_to_graph(load_input(file_name))
     graph = nx.from_edgelist(graph.edges())
+    graph.name = f"graph loaded from {file_name}"
 
     # backend coupling map and properies.
     props = backend.properties()
     cmap = nx.from_edgelist(backend.coupling_map.get_edges())
+
+    return get_and_evaluate_matches(cmap, graph, props, meas_threshold) 
+
+
+def get_and_evaluate_matches(cmap, graph, props, meas_threshold):
+
 
     unique_matches = set()
     match_dicts = []
@@ -309,7 +377,7 @@ def get_best_hex_ring(file_name: str, backend, meas_threshold: float = 0.99):
             )  # store the inverse mapping
 
     if len(match_dicts) == 0:
-        raise ValueError(f"No heavy-hex ring matches found for {file_name}.")
+        raise ValueError(f"No matches found for {graph.name}.")
 
     qualities = []
     max_fid, best_idx = 0, 0
@@ -328,9 +396,9 @@ def get_best_hex_ring(file_name: str, backend, meas_threshold: float = 0.99):
             max_fid = gate_fidelity
 
     if qualities[best_idx][0] == 0:
-        warn(f"No good rings found to execute {file_name} on based on gate fidelity.")
+        warn(f"No good rings found to execute {graph.name} on based on gate fidelity.")
 
     if qualities[best_idx][1] == 0:
-        warn(f"No good rings found to execute on {file_name} based on measurement fidelity.")
+        warn(f"No good rings found to execute on {graph.name} based on measurement fidelity.")
 
     return match_dicts[best_idx], qualities[best_idx], len(qualities)
