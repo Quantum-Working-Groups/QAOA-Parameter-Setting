@@ -5,7 +5,7 @@ import json
 
 best_results_path = Path("data/training/best_parameters_summary.json")
 instances_path = Path("instances")
-database_path = "./optimized_angles_database.json"
+database_path = "./optimized_angles_database_L2F.json"
 
 
 with open(best_results_path, "r") as f:
@@ -16,12 +16,15 @@ for input_file in best_results_SV.keys():
     instance_results = best_results_SV[input_file]
     for depth in instance_results.keys():
         if "regular" in input_file:
+            continue
             instances_subdir = instances_path / "random_regular"
         elif "swap" in input_file:
             instances_subdir = instances_path / "line_to_full"
         elif "erdosrenyi" in input_file:
+            continue
             instances_subdir = instances_path / "erdos_renyi"
         elif "heavyhex" in input_file:
+            continue
             instances_subdir = instances_path / "heavy_hex"
             
         input_path = instances_subdir / input_file
