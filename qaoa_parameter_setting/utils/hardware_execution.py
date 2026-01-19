@@ -13,7 +13,7 @@ from qaoa_parameter_setting.transpilation.make_qaoa_circuits import make_qaoa_ci
 class HarwareExecutor:
     """Class to prepare circuits from results with standardized metadata."""
 
-    def __init__(self, instance_name: str, short_name: str, folder: str):
+    def __init__(self, instance_name: str, short_name: str, folder: str, base_path: str="."):
         """
         Args:
             instance_name: This is the name of a graph in the repository. For example,
@@ -22,7 +22,7 @@ class HarwareExecutor:
                 This short name must be consistent with the `instance_name` provided.
             folder: The folder under `data/training/` where to find the results.
         """
-
+        self._base_path = base_path
         self._instance_name = instance_name
         self._folder = folder
         self._short_name = short_name
@@ -35,7 +35,7 @@ class HarwareExecutor:
         # This will allow us to compare the different methods.
         self._results = []
 
-        for file_name in glob.glob(f"data/training/{folder}/*.json"):
+        for file_name in glob.glob(f"{self._base_path}/data/training/{folder}/*.json"):
             if self._short_name in file_name:
                 with open(file_name, "r") as fin:
                     self._results.append(json.load(fin))
@@ -92,7 +92,7 @@ class HarwareExecutor:
         """Prepares the payload for the Sampler."""
         self._circuit = None
         self._swap_circuit = None
-        file_name = f"instances/{self._folder}/{self._instance_name}"
+        file_name = f"{self._base_path}/instances/{self._folder}/{self._instance_name}"
 
         # Create a template circuit into which we will assign the parameters.
         self._circuit, self._swap_circuit = make_qaoa_circuit(
@@ -140,7 +140,7 @@ class HarwareExecutor:
         file_short_name = result[0].metadata["circuit_metadata"]["short_name"]
         name = f"{file_short_name}_{job_id}.json" 
 
-        file_name = f"data/hardware/{self._folder}/{name}"
+        file_name = f"{self._base_path}/data/hardware/{self._folder}/{name}"
 
         if os.path.isfile(file_name) and not overwrite:
             raise ValueError(f"File {file_name} already exists.")
