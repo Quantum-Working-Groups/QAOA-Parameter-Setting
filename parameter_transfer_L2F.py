@@ -3,8 +3,6 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 
 
-# ---------- helpers ----------
-
 def parse_key(k: str):
     parts = [p.strip() for p in k.split(",")]
     if len(parts) < 2:
@@ -54,14 +52,12 @@ def to_list(x):
     return [x]
 
 
-# ---------- load database ----------
 
 database_path = "./optimized_angles_database_L2F.json"
 with open(database_path, "r", encoding="utf-8") as f:
     db = json.load(f)
 
 
-# ---------- group by first index (a) ----------
 
 groups = {}
 for k, v in db.items():
@@ -69,15 +65,12 @@ for k, v in db.items():
     groups.setdefault(a, []).append((k, b, c, v))
 
 
-# ---------- clustering params ----------
 
 eps = 0.1
 min_samples = 2
 keep_noise = True
 center = "median"  # or "mean"
 
-
-# ---------- clustering ----------
 
 new_db = {}
 
@@ -93,7 +86,6 @@ for a, items in groups.items():
 
     for lab, idxs in lab2idx.items():
 
-        # ----- noise: cluster of size 1 -----
         if lab == -1:
             for i in idxs:
                 orig_k, b, c, v = items[i]
@@ -116,7 +108,6 @@ for a, items in groups.items():
                 }
             continue
 
-        # ----- normal cluster -----
         b_vals = bs[idxs, 0]
         center_b = float(np.mean(b_vals)) if center == "mean" else float(np.median(b_vals))
         center_key = f"{a}, {center_b}"
@@ -131,7 +122,6 @@ for a, items in groups.items():
 
             members.append({"orig_key": orig_k, "b": float(b), "c": c})
 
-            # 🔑 AQUÍ SE ELIMINA EL NIVEL EXTRA
             qaoa_angles_flat.extend(to_list(qaoa_angles_i))
 
             if meta_i:
@@ -149,8 +139,6 @@ for a, items in groups.items():
             "qaoa_angles": qaoa_angles_flat,
         }
 
-
-# ---------- save ----------
 
 with open("optimized_angles_database_L2F_cluster.json", "w", encoding="utf-8") as f:
     json.dump(new_db, f, indent=2, ensure_ascii=False)
