@@ -81,16 +81,19 @@ mc_costs, means, sems, mc_insts = [], [], [], []
 for res in res_summary:
     inst = res["metadata"]["circuit_metadata"]["file_name"].split("/")[-1]
     eval_energy = res["metadata"]["circuit_metadata"]["eval_energy"]
-    
+    label = res["metadata"]["circuit_metadata"]["method"]
     
     mc_costs.append(counts_to_maxcut_cost(graphs[inst], res["counts"]))
     
     means.append(100*(mean_obj(mc_costs[-1]) - m_cuts[inst][1])/(m_cuts[inst][0] - m_cuts[inst][1]))
 
     sems.append(100*(standard_error_mean(mc_costs[-1], sum(res["counts"].values())))/(m_cuts[inst][0] - m_cuts[inst][1]))
+    if label == "PT_PP_AAA":
+        print(inst)
+        print(means[-1])
     mc_insts.append(inst)
-means = [100*(mean_obj(mc_cost) - min_cut)/(max_cut - min_cut) for mc_cost in mc_costs]
-sems = np.array([100*(standard_error_mean(mc_cost, sum(res_summary[idx]["counts"].values())))/(max_cut - min_cut) for idx, mc_cost in enumerate(mc_costs)])
+
+
 def approx_ratio(max_cut, min_cut, graph, energy):
     sum_weights = sum(val[2].get("weight", 1.0) for val in graph.edges(data=True))
 
@@ -106,6 +109,7 @@ per_lbl_ar = defaultdict(list)
 # Goupe the data
 for idx, mc_cost in enumerate(mc_costs):
     label = res_summary[idx]["metadata"]["circuit_metadata"]["method"]
+    
     per_lbl_m[label].append(means[idx])
     per_lbl_s[label].append(sems[idx])
 
