@@ -1,16 +1,19 @@
 """Code to format a Pandas table generated from SummaryTable."""
 
+import re
 from abc import abstractmethod
 from collections.abc import Callable
 from functools import partial
-from typing import Any, Literal, TypeVar
+from itertools import product
+from typing import Any, Hashable, Literal, TypeVar
 
+import numpy as np
 import pandas as pd
 from pandas.io.formats.style import Styler, _background_gradient
 
 from qaoa_parameter_setting.utils.summary.summary_table import SummaryTable
 
-__slots__ = ["formatted_styler_for"]
+__slots__ = ["formatted_styler_for", "convert_evaluation_to_multicolumn_latex"]
 
 
 def __rename_index(obj, rename_func: Callable[[str], str]):
@@ -56,8 +59,8 @@ def remove_json_suffix_df(df: pd.DataFrame) -> pd.DataFrame:
     """Remove suffix ``".json"`` from columns and indexes, returning a copy."""
     df = df.copy()
 
-    def _remove_suffix_json(x: str) -> str:
-        if x.endswith(".json"):
+    def _remove_suffix_json(x: str | Any) -> str:
+        if isinstance(x, str) and x.endswith(".json"):
             return x.removesuffix(".json")
         return x
 
@@ -74,6 +77,67 @@ def wrap_latex_maths(val: str) -> str:
 def unwrap_latex_maths(val: str) -> str:
     """Remove LaTeX maths delimiters from the ends of val."""
     return val.removeprefix("$").removesuffix("$")
+
+
+def format_method_name(
+    method_name: str,
+    acronym_mapping: dict[str, str],
+    optimized_marker: str = "*",
+) -> str:
+    """Format a method name using acronym mapping and optimization detection.
+
+    Method names follow the pattern: ACRONYM[_PART]*[_opt|_noOpt|_no_opt]
+    where ACRONYM is mapped to a phrase, and optimization status is indicated
+    by a marker (default: asterisk).
+
+    Args:
+        method_name: The method name to format (e.g., "FA_MPS_opt", "TQA_PP_no_opt")
+        acronym_mapping: Dictionary mapping acronyms to human-readable phrases
+        optimized_marker: String to append for optimized methods. Defaults to "*".
+
+    Returns:
+        Formatted method name with phrase and optional optimization marker.
+
+    Examples:
+        >>> format_method_name("FA_MPS_opt", {"FA": "Fixed Angle"})
+        "Fixed Angle*"
+        >>> format_method_name("TQA_PP_no_opt", {"TQA": "TQA"})
+        "TQA"
+        >>> format_method_name("I_SV", {"I": "Interp"})
+        "Interp"
+    """
+    # Split the method name by underscores
+    parts = method_name.split("_")
+
+    # The first part is the acronym
+    if not parts:
+        return method_name
+
+    acronym = parts[0]
+
+    # Get the phrase from the mapping, or use the acronym if not found
+    phrase = acronym_mapping.get(acronym, acronym)
+
+    # Check for optimization status in the remaining parts
+    # Methods with "opt" (but not "noOpt" or "no_opt") are optimized
+    # Methods without any opt-related suffix are unoptimized
+    is_optimized = False
+
+    # Join remaining parts to check for optimization patterns
+    remaining = "_".join(parts[1:]).lower() if len(parts) > 1 else ""
+
+    # Check if "opt" appears but not as part of "noopt" or "no_opt"
+    if "opt" in remaining:
+        # Check if it's explicitly marked as not optimized
+        if "noopt" not in remaining and "no_opt" not in remaining:
+            is_optimized = True
+
+    # Build the result
+    result = phrase
+    if is_optimized:
+        result += optimized_marker
+
+    return result
 
 
 class AggregatorFormatter:
@@ -266,10 +330,11 @@ class AggregatorFormatter:
 
 
 class MeanAggregator(AggregatorFormatter):
-    """Compute the mean value and format as a single number."""
+    """Compute the mean percentage and format as a single number."""
 
     def __call__(self, vals: pd.Series) -> str:
-        _mean = vals.mean()
+        # Get the mean and convert to a percentage.
+        _mean = vals.mean() * 100
         return self._format_num(_mean)
 
     def _base_value(self, val: str) -> float:
@@ -287,14 +352,15 @@ class CountAggregator(AggregatorFormatter):
 
 
 class FancyStdDevAggregator(AggregatorFormatter):
-    """Calculate the mean and standard deviation and format as the mean+-std dev.
+    """Calculate the mean and standard deviation percentage and format as the mean+-std dev.
 
     The exact format of ``+-`` is determined by :attr:`format`."""
 
     def __call__(self, vals: pd.Series) -> Any:
         _count = vals.count()
-        _mean = vals.mean()
-        _std = vals.std()
+        # Get the mean and standard deviation and convert to percentage
+        _mean = vals.mean() * 100
+        _std = (vals * 100).std()
         if _count > 1:
             return self._format_uncertainty(_mean, _std)
         else:
@@ -357,86 +423,269 @@ def _unformatted_background_gradient(
 
 def formatted_styler_for(
     table: SummaryTable,
-    depth: int | None,
-    agg_values: Literal["approximation_ratio", "num_instances"],
+    agg_values: Literal["approximation_ratio", "num_instances"]
+    | list[Literal["approximation_ratio", "num_instances"]],
+    depths: int | list[int] | None = None,
+    num_nodes: int | list[int] | None = None,
     with_fancy_values: bool = False,
-    cmap: str = "Greens",
+    cmap: str | dict[str, str] | dict[tuple[str | None, str], str] | None = "Greens",
     target_format: Literal["text", "latex", "siunitx"] = "text",
-    precision: int = 4,
+    precision: int
+    | dict[Literal["approximation_ratio", "num_instances"], int]
+    | None = None,
     missing_data_str: str = "-",
-) -> tuple[pd.DataFrame, Styler]:
+    show_empty_rows: bool = True,
+    acronym_mapping: dict[str, str] | None = None,
+    optimized_marker: str | None = None,
+    exclude_methods: list[str] | None = None,
+) -> tuple[pd.DataFrame, Styler, dict[str, tuple[float, float]]]:
+    """Format a dataframe as a pivot table with appropriate styling.
+
+    Args:
+        table: The :class:`SummaryTable` instance whose data should be formatted.
+        agg_values: Values to aggregate. Can be a single value or a list of values.
+        depths: Depths to show in the data. Results for different depths will
+            not be aggregated. If None, all depths will be shown. Defaults to None.
+        num_nodes: Graph sizes to show in the data. Results for different sizes
+            will not be aggregated. If None, all graph sizes will be shown.
+            Defaults to None.
+        with_fancy_values: Whether aggregate values should show additional
+            information, e.g., standard deviation for
+            ``agg_values="approximation_ratio"``. Defaults to False.
+        cmap: The matplotlib colormap to use for cell colours. Defaults to
+            "Greens". If a dictionary, the keys can be either:
+            - Evaluation method strings (old format, for backward compatibility)
+            - Tuples of (evaluation, field) where evaluation is the evaluation
+              method string (or None for all) and field is either
+              "approximation_ratio" or "num_instances" (new format for multiple values)
+            Values are cmaps to be applied to the specified evaluation (and field).
+            If None, backgrounds are left blank.
+        target_format: Dictates how values are formatted. See implementation of
+            :class:`Aggregator` for details. Defaults to "text".
+        precision: Optional precision of values, e.g., number of decimal places.
+            If None, then the default value is ``4`` if any value in
+            ``agg_values`` is "approximation_ratio" and ``0`` otherwise. The
+            precision for different ``agg_values`` can be different by providing
+            a dictionary. See implementation of :class:`Aggregator` for details.
+            Defaults to None.
+        missing_data_str: String to put in place of missing data. Defaults to "-".
+        show_empty_rows: Include all unique values in the rows, even if there
+            are no results for a given configuration. For example, if there are
+            no results for method ``TQA`` and the given depth, but there are for
+            another depth, then the row for ``TQA`` will still be shown. If
+            False, only row values present in the displayed data is shown.
+            Defaults to False.
+        acronym_mapping: Optional dictionary mapping method acronyms (e.g., "FA",
+            "TQA") to human-readable phrases (e.g., "Fixed Angle", "TQA"). Method
+            names are automatically formatted using :func:`format_method_name` to
+            include the phrase and an optimization marker. If None, method names
+            are used as-is. Defaults to None.
+        optimized_marker: String to append to method names that have
+            optimization enabled (e.g., methods ending in "_opt"). If None,
+            either ``"*"`` or ``"$^\\star$"`` is used, depending on
+            ``target_format``. Defaults to None.
+        exclude_methods: Optional list of method acronyms to exclude from the
+            formatted table. Methods whose names start with any of these
+            acronyms will be filtered out. For example, passing ``["FA", "I"]``
+            would exclude all Fixed Angle and Interpolation methods. If None,
+            no methods are excluded. Defaults to None.
+
+    Raises:
+        ValueError: If ``agg_values`` is an unrecognised value.
+
+    Returns:
+        The tuple ``(df, styler)`` where ``styler`` contains appropriate
+        colours, naming, etc. for inclusion in a paper.
+    """
+
+    # Normalize agg_values to a list
+    if isinstance(agg_values, str):
+        agg_values_list = [agg_values]
+    else:
+        agg_values_list = list(agg_values)
+
+    if precision is None:
+        precision = {
+            "approximation_ratio": 1,
+            "num_instances": 0,
+        }
+    elif isinstance(precision, int):
+        precision = {"approximation_ratio": precision, "num_instances": precision}
+
+    for _agg_value in agg_values_list:
+        assert _agg_value in precision, (
+            f"{_agg_value} not found in precision dictionary."
+        )
+    if optimized_marker is None:
+        if target_format == "text":
+            optimized_marker = "*"
+        else:
+            optimized_marker = "$^\\star$"
 
     # *** Pivot dataframe and aggregate appropriately
     _data = table.to_dataframe()
-    if agg_values == "num_instances":
-        # We use num_nodes as the dataframe column to aggregate so that we can
-        # include node counts in the fancy value.
-        __agg_values = "num_nodes"
-        if with_fancy_values:
-            aggregator = FancyCountRangeAggregator(
-                precision=precision, format=target_format
-            )
+
+    # Create aggregators and determine values for each field
+    aggregators: dict[str, AggregatorFormatter] = {}
+    __agg_values_dict: dict[str, str] = {}
+
+    for agg_val in agg_values_list:
+        if agg_val == "num_instances":
+            __use_fancy_count = with_fancy_values
+            __agg_values_dict[agg_val] = "num_nodes"
+
+            if __use_fancy_count:
+                aggregators[agg_val] = FancyCountRangeAggregator(
+                    precision=precision[agg_val], format=target_format
+                )
+            else:
+                aggregators[agg_val] = CountAggregator(
+                    precision=precision[agg_val],
+                    format=target_format,
+                )
+        elif agg_val == "approximation_ratio":
+            if with_fancy_values:
+                aggregators[agg_val] = FancyStdDevAggregator(
+                    precision=precision[agg_val], format=target_format
+                )
+            else:
+                aggregators[agg_val] = MeanAggregator(
+                    precision=precision[agg_val],
+                    format=target_format,
+                )
+            __agg_values_dict[agg_val] = agg_val
         else:
-            aggregator = CountAggregator(
-                precision=precision,
-                format=target_format,
+            # We shouldn't get here, but it's good practice to handle this default
+            # branch of the if statements.
+            raise ValueError(
+                "agg_values {!r} must be either 'num_instances' or 'approximation_ratio'.".format(
+                    agg_val
+                )
             )
-    elif agg_values == "approximation_ratio":
-        if with_fancy_values:
-            aggregator = FancyStdDevAggregator(
-                precision=precision, format=target_format
-            )
-        else:
-            aggregator = MeanAggregator(
-                precision=precision,
-                format=target_format,
-            )
-        __agg_values = agg_values
-    else:
-        # We shouldn't get here, but it's good practice to handle this default
-        # branch of the if statements.
-        raise ValueError(
-            "agg_values {!r} must be either 'num_instances' or 'approximation_ratio'.".format(
-                agg_values
+
+    # *** Filter based on depth, num_nodes, and excluded methods
+    filtered_data = _data
+    if depths is not None:
+        if isinstance(depths, int):
+            depths = [depths]
+        filtered_data = filtered_data[filtered_data["depth"].isin([d for d in depths])]
+    if num_nodes is not None:
+        if isinstance(num_nodes, int):
+            num_nodes = [num_nodes]
+        filtered_data = filtered_data[
+            filtered_data["num_nodes"].isin([d for d in num_nodes])
+        ]
+
+    # Filter out excluded methods by checking if method starts with any excluded acronym
+    if exclude_methods is not None:
+        # Create a mask that is True for methods we want to keep
+        mask = ~filtered_data["method"].apply(
+            lambda method: any(
+                method.startswith(acronym) for acronym in exclude_methods
             )
         )
-
-    # *** Filter based on depth
-    if depth is not None:
-        _data = _data[_data["depth"] == str(depth)]
+        filtered_data = filtered_data[mask]
 
     # *** Pivot table
-    # Pivot and use aggregator
-    pivot = _data.pivot_table(
-        columns=[
-            "graph_type",
-            "depth",
-        ],
-        index=[
-            "evaluation",
-            "trainer_config",
-        ],
-        values=__agg_values,
-        aggfunc=aggregator,  # type:ignore
-    )
-    # Recreate indices to ensure we include all methods.
-    pivot = pivot.reindex(
-        pd.MultiIndex.from_tuples(
+    # Pivot and use aggregators - create separate pivot for each value if multiple
+    if len(agg_values_list) == 1:
+        # Single value case - use original logic
+        agg_val = agg_values_list[0]
+        pivot = filtered_data.pivot_table(
+            columns=["graph_type"],
+            index=[
+                "evaluation",
+                "method",
+            ],
+            values=__agg_values_dict[agg_val],
+            aggfunc=aggregators[agg_val],  # type:ignore
+        )
+    else:
+        # Multiple values case - create dict of aggregators for pivot_table
+        pivot = filtered_data.pivot_table(
+            columns=["graph_type"],
+            index=[
+                "evaluation",
+                "method",
+            ],
+            values=[__agg_values_dict[agg_val] for agg_val in agg_values_list],
+            # values=agg_values_list,
+            aggfunc={
+                __agg_values_dict[agg_val]: aggregators[agg_val]
+                for agg_val in agg_values_list
+            },  # type:ignore
+        )
+
+    # *** Recreate indices to ensure we include all methods and relevant column values.
+    # To recreate the columns, we need to (i) get a list of graph types, (ii)
+    # figure out which attributes we have in the columns, and (iii) create a
+    # list of tuples appropriate for reindexing.
+
+    # Row index should include the evaluation method and trainer config, even
+    # though one is derived from the other.
+    if show_empty_rows:
+        # Filter out excluded methods when creating the row index
+        _methods_to_include = table._methods
+        if exclude_methods is not None:
+            _methods_to_include = [
+                _method_json
+                for _method_json in table._methods
+                if not any(
+                    table.trainer_config_to_method(_method_json).startswith(acronym)
+                    for acronym in exclude_methods
+                )
+            ]
+
+        _row_index = pd.MultiIndex.from_tuples(
             sorted(
                 [
-                    (table.trainer_config_to_evaluation(_method), _method)
-                    for _method in table._methods
+                    (
+                        table.trainer_config_to_evaluation(_method_json),
+                        table.trainer_config_to_method(_method_json),
+                    )
+                    for _method_json in _methods_to_include
                 ]
             )
         )
+    else:
+        _row_index = pivot.index.sort_values()
+
+    # Reindex:
+    # 1. The trainer config row index now has two columns: the evaluation method
+    #    and the training method. All methods are included.
+    # 2. The columns contain the same number of rows. But now depth and
+    #    num_nodes will contain all values if ``depths`` and ``num_nodes`` are
+    #    None, respectively. Other columns will always contain all unique
+    #    values, such as ``graph_type``.
+    pivot = pivot.reindex(
+        index=_row_index,
     )
+    # *** End of reindexing
+
     # Rename columns to use graph types from table.
     pivot = pivot.rename(columns=table.formatter_graph_type())
-    # If we are targeting LaTeX, escape underscores.
-    if target_format in ["latex", "siunitx"]:
-        pivot = escape_underscore_df(pivot)
     # Remove suffixes ".json" from columns and indexes.
     pivot = remove_json_suffix_df(pivot)
+    # Rename method names if acronym mapping is provided
+    if acronym_mapping is not None:
+        # Get all unique method names from the index
+        method_names = pivot.index.get_level_values(1).unique().tolist()
+        # Create the method name mapping using the acronym mapping
+        method_name_mapping = {
+            _method: format_method_name(_method, acronym_mapping, optimized_marker)
+            for _method in method_names
+        }
+        pivot = pivot.rename(index=method_name_mapping, level=1)
+
+    # Rename columns
+    column_renamings = {
+        "approximation_ratio": "Approximation Ratio",
+        "num_instances": "Num. Instances",
+        # As we use num_nodes to compute the number of instances, we rename it
+        # to the same as "num_instances"
+        "num_nodes": "Num. Instances",
+    }
+    pivot = pivot.rename(columns=column_renamings)
 
     # *** Handle styler colours, precision, etc.
     # Set format options
@@ -448,48 +697,269 @@ def formatted_styler_for(
     )
 
     # *** Set background colours
-    if agg_values in ["approximation_ratio", "num_instances"] and with_fancy_values:
-        # If we're running with fancy values, we need to apply colours based on
-        # the "base" value. For this we map back to the base value with
-        # _unformatted_background_gradient. Furthermore, we need to set the
-        # limits on the colours from the entire table and not each column, which
-        # is the default for background_gradient.
+    cmap_ranges: dict[str, tuple[float, float]] = {}
+    if cmap is not None:
+        if isinstance(cmap, str):
+            # Single colormap for all evaluations and fields
+            _cmap_dict = {(None, agg_val): cmap for agg_val in agg_values_list}
+        else:
+            # Check if it's the old format (dict[str, str]) or new format (dict[tuple, str])
+            # by examining the first key
+            first_key = next(iter(cmap.keys()))
+            if isinstance(first_key, tuple):
+                # New format: keys are (evaluation, field) tuples
+                _cmap_dict = cmap
+            else:
+                # Old format: keys are just evaluation strings
+                # Convert to new format by applying to all fields
+                _cmap_dict = {
+                    (eval_key, agg_val): colormap
+                    for eval_key, colormap in cmap.items()
+                    for agg_val in agg_values_list
+                }
 
-        # Map the dataframe back to the base data and compute the min and max.
-        _base_data = _unformat_data(pivot, aggregator=aggregator)
-        # Compute min and max, twice as the first returns the min/max for each column.
-        _vmin = _base_data.min().min()
-        _vmax = _base_data.max().max()
+        # Compute min/max for each field separately
+        _vmin_dict: dict[str, float] = {}
+        _vmax_dict: dict[str, float] = {}
 
-        # Apply a custom function that applies background_gradient using the
-        # "base" value of the data. See _unformatted_background_gradient and
-        # _unformat_data.
-        styler = styler.apply(
-            partial(_unformatted_background_gradient, aggregator=aggregator),
-            vmin=_vmin,
-            vmax=_vmax,
-            cmap=cmap,
-            # Following parameters taken from implementation of Styler.background_gradient.
-            axis=0,
-            subset=slice(None),
-            low=0,
-            high=0,
-            text_color_threshold=0.408,
-            gmap=None,
+        for agg_val in agg_values_list:
+            # Get the aggregator for this field
+            aggregator = aggregators[agg_val]
+
+            # Extract data for this field from pivot
+            if len(agg_values_list) == 1:
+                # Single value - pivot is a simple DataFrame
+                _field_data = pivot
+            else:
+                # Multiple values - pivot has MultiIndex columns with field as first level
+                _field_data = pivot[column_renamings[agg_val]]
+
+            # Map back to base data and compute min/max for this field
+            _base_data = _unformat_data(_field_data, aggregator=aggregator)
+            _vmin_dict[agg_val] = _base_data.min().min()
+            _vmax_dict[agg_val] = _base_data.max().max()
+
+        for (_evaluation, _field), _cmap in _cmap_dict.items():
+            # Get the aggregator and min/max for this field
+            aggregator = aggregators[_field]
+            _vmin = _vmin_dict[_field]
+            _vmax = _vmax_dict[_field]
+
+            # Determine subset based on evaluation and field
+            if len(agg_values_list) == 1:
+                # Single value case
+                _subset = (
+                    pd.IndexSlice[[_evaluation], :]
+                    if _evaluation is not None
+                    else slice(None)
+                )
+            else:
+                # Multiple values case - need to select both field and evaluation
+                if _evaluation is not None:
+                    _subset = pd.IndexSlice[
+                        [_evaluation], column_renamings[__agg_values_dict[_field]]
+                    ]
+                else:
+                    _subset = pd.IndexSlice[
+                        :, column_renamings[__agg_values_dict[_field]]
+                    ]
+
+            # Apply a custom function that applies background_gradient using the
+            # "base" value of the data. See _unformatted_background_gradient and
+            # _unformat_data.
+            styler = styler.apply(
+                partial(_unformatted_background_gradient, aggregator=aggregator),
+                vmin=_vmin,
+                vmax=_vmax,
+                cmap=_cmap,
+                # Following parameters taken from implementation of Styler.background_gradient.
+                axis=0,
+                subset=_subset,
+                low=0,
+                high=0,
+                text_color_threshold=0.408,
+                gmap=None,
+            )
+            cmap_ranges[_field] = (_vmin, _vmax)
+
+        # Missing values should not have a colour, which is the default with
+        # Styler.background_gradient
+        styler = styler.highlight_null(props="background-color:white;color:black")
+
+    # If we are targeting LaTeX, escape underscores. We do this at the end so we
+    # don't have to update column and row names with an underscore.
+    if target_format in ["latex", "siunitx"]:
+        pivot = escape_underscore_df(pivot)
+        styler.data = escape_underscore_df(styler.data)
+
+    column_rename = {
+        "approximation_ratio": "Approximation Ratio",
+        "num_instances": "Num. Instances",
+    }
+    pivot = pivot.rename(columns=column_rename)
+    styler.data = styler.data.rename(columns=column_rename)
+
+    return pivot, styler, cmap_ranges
+
+
+def convert_evaluation_to_multicolumn_latex(latex_str: str) -> str:
+    """Convert evaluation method rows in LaTeX tables to multicolumn cells.
+
+    This function post-processes LaTeX table output to:
+    1. Remove the entire first column (evaluation column)
+    2. Transform rows where the evaluation method appeared into multicolumn headers
+    3. Add \\midrule after each evaluation header
+    4. Update \\cline commands to reflect the new column count
+
+    This creates cleaner section headers for each evaluation method (MPS, PP, SV).
+
+    Args:
+        latex_str: The LaTeX table string generated by Styler.to_latex()
+
+    Returns:
+        Modified LaTeX string with evaluation methods as multicolumn headers
+        and the evaluation column removed
+
+    Example:
+        Input:
+        \\begin{tabular}{llllll}
+         & graph_type & ER & HH & L2F & RR \\\\
+        evaluation & method &  &  &  &  \\\\
+        \\multirow[c]{5}{*}{MPS} & Fourier & {...} \\\\
+         & Fourier (Aer) & {...} \\\\
+        \\cline{1-6}
+
+        Output:
+        \\begin{tabular}{lllll}
+        graph_type & ER & HH & L2F & RR \\\\
+        method &  &  &  &  \\\\
+        \\multicolumn{5}{c}{MPS} \\\\
+        \\midrule
+        Fourier & {...} \\\\
+        Fourier (Aer) & {...} \\\\
+        \\cline{1-5}
+    """
+    lines = latex_str.split("\n")
+    processed_lines = []
+
+    # Track the number of columns (after removing the first column)
+    num_columns = None
+    in_header = True  # Track if we're still in the header section
+    already_added_evaluation_method = False
+
+    for line in lines:
+        # Extract number of columns from \begin{tabular}{...} and remove first column
+        tabular_match = re.match(r"\\begin\{tabular\}\{([lcrp|]+)\}", line)
+        if tabular_match and num_columns is None:
+            # Count the column specifiers (l, c, r, p)
+            col_spec = tabular_match.group(1)
+            # Remove the first column specifier (the evaluation/method column)
+            new_col_spec = col_spec[1:]
+            num_columns = len([c for c in new_col_spec if c in "lcrp"])
+
+            # Build column specification with vertical borders every 4 columns
+            # The first column is the method name, then groups of 4 value columns
+            col_chars = [c for c in new_col_spec if c in "lcrp"]
+            formatted_cols = []
+
+            # First column (method names) with border after it
+            if col_chars:
+                formatted_cols.append(col_chars[0])
+                formatted_cols.append("|")
+
+                for i in range(1, len(col_chars[1:]), 4):
+                    # Replace left-align with centred as we are most likely
+                    # dealing with numerical values or headings
+                    formatted_cols.append(
+                        "".join(col_chars[i : i + 4]).replace("l", "c")
+                    )
+                    formatted_cols.append("|")
+
+            new_line = f"\\begin{{tabular}}{{{(''.join(formatted_cols))}}}"
+            processed_lines.append(new_line)
+            continue
+
+        # Update \cline commands to reflect new column count
+        cline_match = re.match(r"\\cline\{1-(\d+)\}", line)
+        if cline_match and num_columns:
+            # Replace with new column count
+            new_line = f"\\cline{{1-{num_columns}}}"
+            processed_lines.append(new_line)
+            continue
+
+        # Check if this line starts with \multirow (evaluation method row)
+        multirow_match = re.match(
+            r"^\s*\\multirow\[c\]\{\d+\}\{\*\}\{([^}]+)\}\s*&\s*(.+)$", line
         )
-    else:
-        # Colours can be automatic, so use Styler.background_gradient. But we
-        # need to set vmin and vmax to use the range of the entire table.
-        # Call min/max twice as the first returns a series of values.
-        _vmin = pivot.min().min()
-        _vmax = pivot.max().max()
-        styler = styler.background_gradient(
-            cmap,
-            vmin=_vmin,
-            vmax=_vmax,
-        )
 
-    # Missing values should not have a colour, which is the default with
-    # Styler.background_gradient
-    styler = styler.highlight_null(props="background-color:white;color:black")
-    return pivot, styler
+        if multirow_match:
+            # Extract the evaluation method name and the rest of the row
+            eval_method = multirow_match.group(1)
+            rest_of_row = multirow_match.group(2)
+
+            # Check if this looks like an evaluation method (MPS, PP, SV, etc.)
+            if eval_method and len(eval_method) <= 10 and num_columns:
+                # Figure out prefix to ensure the evaluation headings have the
+                # correct vertical size. The first row needs to be slightly
+                # shorter, probably because it doesn't have maths text above it.
+                if not already_added_evaluation_method:
+                    prefix = "\\rule{0pt}{8pt}"
+                else:
+                    already_added_evaluation_method = True
+                    prefix = "\\rule{0pt}{10pt}"
+                # Insert a multicolumn row for the evaluation method
+                multicolumn_line = (
+                    f"\\multicolumn{{{num_columns}}}{{c}}{{{prefix}{eval_method}}} \\\\"
+                )
+                processed_lines.append(multicolumn_line)
+                # Add midrule after the evaluation header
+                processed_lines.append("\\midrule")
+
+                # Keep the data row without the first column
+                processed_lines.append(rest_of_row)
+                continue
+
+        # Check if this is the header row with column index names (e.g., "graph_type & ER & HH...")
+        # We want to remove this row, but keep rows with actual data headers like "Approximation Ratio"
+        if in_header and "&" in line and "\\\\" in line:
+            # Check if this line contains actual data headers (multicolumn with meaningful names)
+            if (
+                "Approximation Ratio" in line
+                or "Num. Instances" in line
+                or "graph\\_type" in line
+            ):
+                # This is a data header row with multicolumn - keep it but remove first column
+                col_match = re.match(r"^\s*[^&]*&\s*(.+)$", line)
+                if col_match:
+                    new_line = col_match.group(1)
+                    _graph_type = "graph\\_type"
+                    new_line = new_line.replace(_graph_type, " " * len(_graph_type))
+                    # We want headings to be centred, and to have an appropriate
+                    # border. The borders aren't included by default as the
+                    # headings use multicolumn.
+                    if "Approximation Ratio" in line or "Num. Instances" in line:
+                        new_line = new_line.replace("{r}", "{c|}")
+                    processed_lines.append(new_line)
+                    continue
+            elif "method" in line:
+                # Skip line as we don't want this 'empty' line.
+                continue
+
+        # For all other rows with content, remove the first column
+        # This includes header rows and regular data rows
+        if "&" in line and "\\\\" in line:
+            # Match and remove first column: anything before first &
+            col_match = re.match(r"^\s*[^&]*&\s*(.+)$", line)
+            if col_match:
+                new_line = col_match.group(1)
+                processed_lines.append(new_line)
+                continue
+
+        # Mark end of header when we hit midrule after toprule
+        if "\\midrule" in line and in_header:
+            in_header = False
+
+        # Keep lines without & (like \toprule, \midrule, \bottomrule, etc.) as-is
+        processed_lines.append(line)
+
+    return "\n".join(processed_lines)
