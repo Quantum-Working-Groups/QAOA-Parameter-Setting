@@ -16,7 +16,7 @@ ACRONYM_MAPPING = {
     "LR": "Linear Ramp",
     "LRAer": "Linear Ramp (Aer)",
     "RTS": "Recursive TS",
-    "TS": "TS",
+    "TS": "Recursive TS",
     "TQA": "TQA",
     "TQAAer": "TQA (Aer)",
 }
