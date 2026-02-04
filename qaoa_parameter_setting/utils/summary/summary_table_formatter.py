@@ -625,11 +625,11 @@ def formatted_styler_for(
     # though one is derived from the other.
     if show_empty_rows:
         # Filter out excluded methods when creating the row index
-        _methods_to_include = table._methods
+        _methods_to_include = table.all_methods()
         if exclude_methods is not None:
             _methods_to_include = [
                 _method_json
-                for _method_json in table._methods
+                for _method_json in table.all_methods()
                 if not any(
                     table.trainer_config_to_method(_method_json).startswith(acronym)
                     for acronym in exclude_methods
