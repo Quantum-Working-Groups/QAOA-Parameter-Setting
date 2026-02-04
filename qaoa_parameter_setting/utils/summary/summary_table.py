@@ -136,6 +136,11 @@ class SummaryTable:
         self._data: SummaryData = {}
         self._minmax_data: MinMaxData = {}
         self._methods: list[str] = []
+        self._additional_methods: list[str] = []
+        """List of additional methods that may not have a method JSON.
+
+        They are no-opt methods from the zeroth iteration of an opt method."""
+
         if not isinstance(problem_classes, list):
             self._problem_classes = [problem_classes]
         else:
@@ -315,6 +320,9 @@ class SummaryTable:
                 no_opt_config = self.config_path_to_config(
                     self.trainer_config_to_no_opt(result)
                 )
+                self._additional_methods.append(
+                    self.config_path_to_config(no_opt_config)
+                )
                 self.populate_results(
                     result,
                     results,
@@ -378,6 +386,11 @@ class SummaryTable:
                     )
                 )
             self._methods.append(self.config_path_to_config(filename))
+
+    def all_methods(self) -> list[str]:
+        methods = [m for m in self._methods]
+        methods.extend(self._additional_methods)
+        return list(sorted(set(methods)))
 
     def add_minmax_cut_data(self, folder_name: str, replace: bool = False):
         """Load the min-max cut data from a folder.
