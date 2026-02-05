@@ -10,7 +10,7 @@ database_path = "../../optimized_angles_database_HH.json"
 
 energy_eval = "All"
 instance_type = "heavyhex"
-max_nodes = 39
+max_nodes = 40 
 
 with open(best_results_path, "r") as f:
     best_results = json.load(f)
