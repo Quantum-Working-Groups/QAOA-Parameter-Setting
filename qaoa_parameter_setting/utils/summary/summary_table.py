@@ -1,17 +1,18 @@
 """Allows us to parse the training data and summarise each method's performance."""
 
+from collections.abc import Iterable
 import glob
 import json
 import os
-import warnings
-from collections.abc import Iterable
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Literal, NoReturn, TypeAlias, TypedDict, overload
+import warnings
 
+import numpy as np
 import pandas as pd
 
-import qaoa_parameter_setting.utils.instance as Instance
 from qaoa_parameter_setting.utils.graph_utils import maxcut_approximation_ratio
+import qaoa_parameter_setting.utils.instance as Instance
 
 # *** type aliases to make _data type hints easier.
 GraphKey: TypeAlias = str
@@ -101,6 +102,30 @@ def guess_problem_class(
     return None
 
 
+def sanitize_energy(energy_val: float | None | Literal["NA"]) -> float | None:
+    """Sanitize an energy value from a results dictionary.
+
+    Args:
+        energy_val: Energy from a results dictionary, which can be a floating value, None, or ``"NA"``.
+
+    Raises:
+        ValueError: If the energy is an unknown string.
+        ValueError: If the energy is an unknown type.
+
+    Returns:
+        A float value or None, representing the input energy. ``"NA`` is mapped to None.
+    """
+    if isinstance(energy_val, str):
+        if energy_val == "NA":
+            return None
+        else:
+            raise ValueError(f"Unknown energy value: {energy_val!r}")
+    elif energy_val is None or isinstance(energy_val, (float, np.floating)):
+        return energy_val
+    else:
+        raise ValueError(f"Unknown energy value type: {type(energy_val)!r}")
+
+
 class SummaryTable:
     """Manages the construction of a summary table.
 
@@ -114,12 +139,12 @@ class SummaryTable:
     the file in which we found the best parameters for a given QAOA depth, .
     """
 
-    _problem_classes: list[ProblemClass | None, ...] | None
+    _problem_class: ProblemClass | None
 
     def __init__(
         self,
         filename: str | None = None,
-        problem_classes: ProblemClass | list[ProblemClass | None] | None = None,
+        problem_class: ProblemClass | None = None,
     ):
         """Initialize the summary table instance.
 
@@ -141,10 +166,7 @@ class SummaryTable:
 
         They are no-opt methods from the zeroth iteration of an opt method."""
 
-        if not isinstance(problem_classes, list):
-            self._problem_classes = [problem_classes]
-        else:
-            self._problem_classes = problem_classes
+        self._problem_class: ProblemClass | None = problem_class
 
         if filename is not None:
             with open(filename, "r") as fin:
@@ -167,11 +189,9 @@ class SummaryTable:
                 self._minmax_data = _data["minmax_data"]
                 self._methods = _data["methods"]
 
-                __problem_classes: list[ProblemClass | None] | None
                 # The default is None, where we accept all. This allows us to
                 # handle old saved JSON tables, where all data was included.
-                __problem_classes = _data.get("problem_classes", None)
-                self._problem_classes = __problem_classes
+                self._problem_class = _data.get("problem_class", None)
 
     @property
     def data(self) -> SummaryData:
@@ -275,16 +295,14 @@ class SummaryTable:
 
             # Get the problem class
             problem_class = guess_problem_class(filename, result)
-            if (
-                self._problem_classes is not None
-                and problem_class not in self._problem_classes
-            ):
+            if self._problem_class is not None and problem_class != self._problem_class:
                 # Result problem class not in acceptable problem classes, so we
                 # ignore these results.
                 if problem_class is None:
+                    # We only raise this warning if we aren't filtering by problem class.
                     warnings.warn(
                         "Result with filename {!r} has no problem class!".format(
-                            problem_class
+                            filename
                         )
                     )
                 continue
@@ -306,7 +324,7 @@ class SummaryTable:
             graph: GraphKey = graph_input.split("/")[-1]
 
             # Loop over the trainers in the result
-            results: list[tuple[list[float], float, str, str]] = []
+            results: list[tuple[list[float], float | None, str, str]] = []
             self.populate_results(result, results, filename=filename, config=config)
 
             if graph not in self._data:
@@ -516,7 +534,7 @@ class SummaryTable:
     def populate_results(
         self,
         result: dict,
-        result_data: list[tuple[list[float], float, str, str]],
+        result_data: list[tuple[list[float], float | None, str, str]],
         filename: str | None = None,
         iter_keys: Iterable[str] | None = None,
         config: str | None = None,
@@ -567,7 +585,7 @@ class SummaryTable:
                 )
 
             qaoa_angles = sub_result["optimized_qaoa_angles"]
-            energy = sub_result["energy"]
+            energy = sanitize_energy(energy_val=sub_result["energy"])
 
             # Ensure length of 2p
             if len(qaoa_angles) % 2 != 0:
@@ -587,7 +605,7 @@ class SummaryTable:
                     "data": self._data,
                     "minmax_data": self._minmax_data,
                     "methods": self._methods,
-                    "problem_classes": self._problem_classes,
+                    "problem_class": self._problem_class,
                 },
                 fout,
             )
