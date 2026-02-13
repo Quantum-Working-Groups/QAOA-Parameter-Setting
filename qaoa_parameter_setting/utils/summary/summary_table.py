@@ -80,6 +80,9 @@ def guess_problem_class(
 ) -> ProblemClass | None:
     """Guess the problem class from a filename and optional results dictionary.
 
+    Note that problem classes from the results dictionary will be converted to
+    upper case.
+
     Args:
         result_filename: Filename for the results JSON.
         result: Optional results dictionary as the parsed JSON data. If
@@ -93,7 +96,7 @@ def guess_problem_class(
     if result is not None:
         _class = result.get("args", {}).get("problem_class", None)
         if _class is not None:
-            return _class
+            return str(_class).upper()
 
     if "_MC_" in result_filename:
         return "MC"
@@ -192,6 +195,11 @@ class SummaryTable:
                 # The default is None, where we accept all. This allows us to
                 # handle old saved JSON tables, where all data was included.
                 self._problem_class = _data.get("problem_class", None)
+
+    @property
+    def problem_class(self) -> ProblemClass | None:
+        """Return the problem class of the summary table."""
+        return self._problem_class
 
     @property
     def data(self) -> SummaryData:
@@ -651,6 +659,15 @@ class SummaryTable:
         _approx_ratio = self.maxcut_approximation_ratio(
             graph_key=graph_key, energy=result["energy"], return_none=True
         )
+
+        # Compute normalized energy for MIS problems
+        _num_nodes = Instance.num_nodes(graph_key)
+        _normalized_energy = (
+            result["energy"] / _num_nodes
+            if _num_nodes is not None and self._problem_class == "MIS"
+            else None
+        )
+
         return {
             # Pandas will put the first keys as the first columns, so we put the
             # important columns first.
@@ -677,6 +694,7 @@ class SummaryTable:
             "approximation_ratio": (
                 _approx_ratio if _approx_ratio is not None else None
             ),
+            "normalized_energy": _normalized_energy,
         }
 
     def to_dataframe(self) -> pd.DataFrame:

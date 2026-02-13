@@ -423,15 +423,15 @@ def _unformatted_background_gradient(
 
 def formatted_styler_for(
     table: SummaryTable,
-    agg_values: Literal["approximation_ratio", "num_instances"]
-    | list[Literal["approximation_ratio", "num_instances"]],
+    agg_values: Literal["approximation_ratio", "num_instances", "energy"]
+    | list[Literal["approximation_ratio", "num_instances", "energy"]],
     depths: int | list[int] | None = None,
     num_nodes: int | list[int] | None = None,
     with_fancy_values: bool = False,
     cmap: str | dict[str, str] | dict[tuple[str | None, str], str] | None = "Greens",
     target_format: Literal["text", "latex", "siunitx"] = "text",
     precision: int
-    | dict[Literal["approximation_ratio", "num_instances"], int]
+    | dict[Literal["approximation_ratio", "num_instances", "energy"], int]
     | None = None,
     missing_data_str: str = "-",
     show_empty_rows: bool = True,
@@ -444,6 +444,7 @@ def formatted_styler_for(
     Args:
         table: The :class:`SummaryTable` instance whose data should be formatted.
         agg_values: Values to aggregate. Can be a single value or a list of values.
+            Options are "approximation_ratio", "num_instances", or "energy".
         depths: Depths to show in the data. Results for different depths will
             not be aggregated. If None, all depths will be shown. Defaults to None.
         num_nodes: Graph sizes to show in the data. Results for different sizes
@@ -451,20 +452,20 @@ def formatted_styler_for(
             Defaults to None.
         with_fancy_values: Whether aggregate values should show additional
             information, e.g., standard deviation for
-            ``agg_values="approximation_ratio"``. Defaults to False.
+            ``agg_values="approximation_ratio"`` or ``agg_values="energy"``. Defaults to False.
         cmap: The matplotlib colormap to use for cell colours. Defaults to
             "Greens". If a dictionary, the keys can be either:
             - Evaluation method strings (old format, for backward compatibility)
             - Tuples of (evaluation, field) where evaluation is the evaluation
               method string (or None for all) and field is either
-              "approximation_ratio" or "num_instances" (new format for multiple values)
+              "approximation_ratio", "num_instances", or "energy" (new format for multiple values)
             Values are cmaps to be applied to the specified evaluation (and field).
             If None, backgrounds are left blank.
         target_format: Dictates how values are formatted. See implementation of
             :class:`Aggregator` for details. Defaults to "text".
         precision: Optional precision of values, e.g., number of decimal places.
             If None, then the default value is ``4`` if any value in
-            ``agg_values`` is "approximation_ratio" and ``0`` otherwise. The
+            ``agg_values`` is "approximation_ratio" or "energy" and ``0`` otherwise. The
             precision for different ``agg_values`` can be different by providing
             a dictionary. See implementation of :class:`Aggregator` for details.
             Defaults to None.
@@ -494,8 +495,9 @@ def formatted_styler_for(
         ValueError: If ``agg_values`` is an unrecognised value.
 
     Returns:
-        The tuple ``(df, styler)`` where ``styler`` contains appropriate
-        colours, naming, etc. for inclusion in a paper.
+        The tuple ``(df, styler, cmap_ranges)`` where ``styler`` contains appropriate
+        colours, naming, etc. for inclusion in a paper, and ``cmap_ranges`` contains
+        the min/max values used for coloring each field.
     """
 
     # Normalize agg_values to a list
@@ -508,9 +510,14 @@ def formatted_styler_for(
         precision = {
             "approximation_ratio": 1,
             "num_instances": 0,
+            "energy": 2,
         }
     elif isinstance(precision, int):
-        precision = {"approximation_ratio": precision, "num_instances": precision}
+        precision = {
+            "approximation_ratio": precision,
+            "num_instances": precision,
+            "energy": precision,
+        }
 
     for _agg_value in agg_values_list:
         assert _agg_value in precision, (
@@ -554,11 +561,22 @@ def formatted_styler_for(
                     format=target_format,
                 )
             __agg_values_dict[agg_val] = agg_val
+        elif agg_val == "energy":
+            if with_fancy_values:
+                aggregators[agg_val] = FancyStdDevAggregator(
+                    precision=precision[agg_val], format=target_format
+                )
+            else:
+                aggregators[agg_val] = MeanAggregator(
+                    precision=precision[agg_val],
+                    format=target_format,
+                )
+            __agg_values_dict[agg_val] = "normalized_energy"
         else:
             # We shouldn't get here, but it's good practice to handle this default
             # branch of the if statements.
             raise ValueError(
-                "agg_values {!r} must be either 'num_instances' or 'approximation_ratio'.".format(
+                "agg_values {!r} must be either 'num_instances', 'approximation_ratio', or 'energy'.".format(
                     agg_val
                 )
             )
@@ -684,6 +702,8 @@ def formatted_styler_for(
         # As we use num_nodes to compute the number of instances, we rename it
         # to the same as "num_instances"
         "num_nodes": "Num. Instances",
+        "normalized_energy": "Energy",
+        "energy": "Energy",
     }
     pivot = pivot.rename(columns=column_renamings)
 
@@ -795,6 +815,7 @@ def formatted_styler_for(
     column_rename = {
         "approximation_ratio": "Approximation Ratio",
         "num_instances": "Num. Instances",
+        "energy": "Energy",
     }
     pivot = pivot.rename(columns=column_rename)
     styler.data = styler.data.rename(columns=column_rename)
@@ -802,7 +823,9 @@ def formatted_styler_for(
     return pivot, styler, cmap_ranges
 
 
-def convert_evaluation_to_multicolumn_latex(latex_str: str) -> str:
+def convert_evaluation_to_multicolumn_latex(
+    latex_str: str, num_metrics: int = 1
+) -> str:
     """Convert evaluation method rows in LaTeX tables to multicolumn cells.
 
     This function post-processes LaTeX table output to:
@@ -815,6 +838,9 @@ def convert_evaluation_to_multicolumn_latex(latex_str: str) -> str:
 
     Args:
         latex_str: The LaTeX table string generated by Styler.to_latex()
+        num_metrics: Number of metrics in the table (e.g., 1 for single metric like
+            "num_instances", 2 for both "approximation_ratio" and "num_instances").
+            Used to determine the number of graph columns. Defaults to 1.
 
     Returns:
         Modified LaTeX string with evaluation methods as multicolumn headers
@@ -857,8 +883,8 @@ def convert_evaluation_to_multicolumn_latex(latex_str: str) -> str:
             new_col_spec = col_spec[1:]
             num_columns = len([c for c in new_col_spec if c in "lcrp"])
 
-            # Build column specification with vertical borders every 4 columns
-            # The first column is the method name, then groups of 4 value columns
+            # Build column specification with vertical borders separating metrics
+            # The first column is the method name, then groups of graph columns
             col_chars = [c for c in new_col_spec if c in "lcrp"]
             formatted_cols = []
 
@@ -867,11 +893,17 @@ def convert_evaluation_to_multicolumn_latex(latex_str: str) -> str:
                 formatted_cols.append(col_chars[0])
                 formatted_cols.append("|")
 
-                for i in range(1, len(col_chars[1:]), 4):
+                # Calculate number of graph columns based on number of metrics
+                # Total data columns = (number of columns - 1 for method column)
+                # Number of graphs = total data columns / num_metrics
+                data_cols = len(col_chars) - 1
+                num_graph_types = data_cols // num_metrics
+
+                for i in range(1, len(col_chars), num_graph_types):
                     # Replace left-align with centred as we are most likely
                     # dealing with numerical values or headings
                     formatted_cols.append(
-                        "".join(col_chars[i : i + 4]).replace("l", "c")
+                        "".join(col_chars[i : i + num_graph_types]).replace("l", "c")
                     )
                     formatted_cols.append("|")
 
