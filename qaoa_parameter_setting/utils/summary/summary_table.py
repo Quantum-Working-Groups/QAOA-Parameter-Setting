@@ -662,8 +662,9 @@ class SummaryTable:
 
         # Compute normalized energy for MIS problems
         _num_nodes = Instance.num_nodes(graph_key)
+        _energy = result["energy"]
         _normalized_energy = (
-            result["energy"] / _num_nodes
+            _energy / _num_nodes
             if _num_nodes is not None and self._problem_class == "MIS"
             else None
         )
@@ -694,6 +695,7 @@ class SummaryTable:
             "approximation_ratio": (
                 _approx_ratio if _approx_ratio is not None else None
             ),
+            "energy": _energy,
             "normalized_energy": _normalized_energy,
         }
 

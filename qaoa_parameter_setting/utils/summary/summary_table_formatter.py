@@ -5,13 +5,36 @@ from abc import abstractmethod
 from collections.abc import Callable
 from functools import partial
 from itertools import product
-from typing import Any, Hashable, Literal, TypeVar
+from typing import Any, Hashable, Literal, TypeAlias, TypeVar
 
 import numpy as np
 import pandas as pd
 from pandas.io.formats.style import Styler, _background_gradient
 
 from qaoa_parameter_setting.utils.summary.summary_table import SummaryTable
+
+ColorMapping: TypeAlias = (
+    str
+    | dict[str, str]
+    | dict[tuple[str | None, str], str]
+    | dict[tuple[str, str], str]
+    | dict[tuple[None, str], str]
+    | None
+)
+"""A single colormap specification.
+
+Can be:
+- A string: a single matplotlib colormap name applied to all evaluations and fields.
+- A ``dict[str, str]``: maps evaluation method names (e.g. ``"MPS"``, ``"PP"``, ``"SV"``)
+  to colormap names.
+- A ``dict[tuple[str | None, str], str]`` or ``dict[tuple[str, str], str]``: maps
+  ``(evaluation, field)`` tuples to colormap names, where ``evaluation`` is the
+  evaluation method string (or ``None`` for all) and ``field`` is one of
+  ``"approximation_ratio"``, ``"num_instances"``, or ``"energy"``.
+- ``None``: no background colours are applied.
+
+All entries within a single :data:`ColorMapping` share the same min/max range per metric.
+"""
 
 __slots__ = ["formatted_styler_for", "convert_evaluation_to_multicolumn_latex"]
 
@@ -426,9 +449,9 @@ def formatted_styler_for(
     agg_values: Literal["approximation_ratio", "num_instances", "energy"]
     | list[Literal["approximation_ratio", "num_instances", "energy"]],
     depths: int | list[int] | None = None,
-    num_nodes: int | list[int] | None = None,
+    num_nodes: int | list[int] | dict[str, int | list[int]] | None = None,
     with_fancy_values: bool = False,
-    cmap: str | dict[str, str] | dict[tuple[str | None, str], str] | None = "Greens",
+    cmap: ColorMapping | list[ColorMapping] = "Greens",
     target_format: Literal["text", "latex", "siunitx"] = "text",
     precision: int
     | dict[Literal["approximation_ratio", "num_instances", "energy"], int]
@@ -449,18 +472,67 @@ def formatted_styler_for(
             not be aggregated. If None, all depths will be shown. Defaults to None.
         num_nodes: Graph sizes to show in the data. Results for different sizes
             will not be aggregated. If None, all graph sizes will be shown.
+            If an ``int`` or ``list[int]``, only rows whose ``num_nodes`` value
+            is in the given set are kept (across all evaluation methods).
+            If a ``dict[str, int | list[int]]``, the keys are evaluation method
+            names (e.g. ``"MPS"``, ``"PP"``, ``"SV"``) and the values specify
+            which graph sizes to keep **for that evaluation method only**.
+            Evaluation methods not present as keys are not filtered by
+            ``num_nodes``.  Example::
+
+                num_nodes = {"MPS": 100, "PP": 100, "SV": 20}
+
             Defaults to None.
         with_fancy_values: Whether aggregate values should show additional
             information, e.g., standard deviation for
             ``agg_values="approximation_ratio"`` or ``agg_values="energy"``. Defaults to False.
-        cmap: The matplotlib colormap to use for cell colours. Defaults to
-            "Greens". If a dictionary, the keys can be either:
-            - Evaluation method strings (old format, for backward compatibility)
-            - Tuples of (evaluation, field) where evaluation is the evaluation
-              method string (or None for all) and field is either
-              "approximation_ratio", "num_instances", or "energy" (new format for multiple values)
-            Values are cmaps to be applied to the specified evaluation (and field).
-            If None, backgrounds are left blank.
+        cmap: The matplotlib colormap(s) to use for cell background colours.
+            Defaults to ``"Greens"``.
+
+            A single :data:`ColorMapping` or a list of :data:`ColorMapping` instances
+            may be provided.  If a single :data:`ColorMapping` is given it is
+            automatically wrapped in a list.
+
+            Each :data:`ColorMapping` in the list is processed **independently**:
+            the min/max values used to scale the colour range are computed
+            separately for each :data:`ColorMapping` (per metric).  This means
+            that two :data:`ColorMapping` instances never share their colour
+            range.
+
+            A :data:`ColorMapping` can be:
+
+            - A **string** – a single matplotlib colormap name applied to all
+              evaluation methods and all requested metrics.
+            - A **dict[str, str]** – maps evaluation method names (e.g.
+              ``"MPS"``, ``"PP"``, ``"SV"``) to colormap names.  All entries
+              share the same min/max range (per metric).
+            - A **dict[tuple[str | None, str], str]** – maps
+              ``(evaluation, field)`` tuples to colormap names, where
+              *evaluation* is the evaluation method string (or ``None`` for
+              all methods) and *field* is one of ``"approximation_ratio"``,
+              ``"num_instances"``, or ``"energy"``.  All entries share the
+              same min/max range (per metric).
+            - ``None`` – no background colours are applied for this entry.
+
+            **Examples**::
+
+                # All evaluations coloured green, shared min/max per metric.
+                cmap = "Greens"
+
+                # Different colormaps per evaluation, shared min/max per metric.
+                cmap = {"MPS": "YlOrBr", "PP": "YlGn", "SV": "PuBu"}
+
+                # Only the Energy metric is coloured; shared min/max per metric.
+                cmap = {("MPS", "Energy"): "YlOrBr",
+                        ("PP",  "Energy"): "YlGn",
+                        ("SV",  "Energy"): "PuBu"}
+
+                # MPS and PP share their min/max; SV has its own min/max.
+                cmap = [
+                    {"MPS": "YlOrBr", "PP": "YlGn"},
+                    {"SV": "PuBu"},
+                ]
+
         target_format: Dictates how values are formatted. See implementation of
             :class:`Aggregator` for details. Defaults to "text".
         precision: Optional precision of values, e.g., number of decimal places.
@@ -493,6 +565,8 @@ def formatted_styler_for(
 
     Raises:
         ValueError: If ``agg_values`` is an unrecognised value.
+        ValueError: If two :data:`ColorMapping` instances in ``cmap`` specify
+            colours for the same ``(evaluation, field)`` combination.
 
     Returns:
         The tuple ``(df, styler, cmap_ranges)`` where ``styler`` contains appropriate
@@ -571,7 +645,7 @@ def formatted_styler_for(
                     precision=precision[agg_val],
                     format=target_format,
                 )
-            __agg_values_dict[agg_val] = "normalized_energy"
+            __agg_values_dict[agg_val] = "energy"
         else:
             # We shouldn't get here, but it's good practice to handle this default
             # branch of the if statements.
@@ -588,11 +662,26 @@ def formatted_styler_for(
             depths = [depths]
         filtered_data = filtered_data[filtered_data["depth"].isin([d for d in depths])]
     if num_nodes is not None:
-        if isinstance(num_nodes, int):
-            num_nodes = [num_nodes]
-        filtered_data = filtered_data[
-            filtered_data["num_nodes"].isin([d for d in num_nodes])
-        ]
+        if isinstance(num_nodes, dict):
+            # Per-evaluation filtering: build a boolean mask that keeps a row
+            # when either (a) its evaluation method is not in the dict, or
+            # (b) its num_nodes value is in the allowed set for that evaluation.
+            def _num_nodes_mask(row) -> bool:
+                eval_method = row["evaluation"]
+                if eval_method not in num_nodes:
+                    return True
+                allowed = num_nodes[eval_method]
+                if isinstance(allowed, int):
+                    allowed = [allowed]
+                return row["num_nodes"] in allowed
+
+            filtered_data = filtered_data[filtered_data.apply(_num_nodes_mask, axis=1)]
+        else:
+            if isinstance(num_nodes, int):
+                num_nodes = [num_nodes]
+            filtered_data = filtered_data[
+                filtered_data["num_nodes"].isin(list(num_nodes))
+            ]
 
     # Filter out excluded methods by checking if method starts with any excluded acronym
     if exclude_methods is not None:
@@ -702,7 +791,6 @@ def formatted_styler_for(
         # As we use num_nodes to compute the number of instances, we rename it
         # to the same as "num_instances"
         "num_nodes": "Num. Instances",
-        "normalized_energy": "Energy",
         "energy": "Energy",
     }
     pivot = pivot.rename(columns=column_renamings)
@@ -718,89 +806,152 @@ def formatted_styler_for(
 
     # *** Set background colours
     cmap_ranges: dict[str, tuple[float, float]] = {}
-    if cmap is not None:
-        if isinstance(cmap, str):
-            # Single colormap for all evaluations and fields
-            _cmap_dict = {(None, agg_val): cmap for agg_val in agg_values_list}
+
+    # Normalise cmap to list[ColorMapping]
+    if not isinstance(cmap, list):
+        cmap_list: list[ColorMapping] = [cmap]
+    else:
+        cmap_list = list(cmap)
+
+    # Helper: expand a single ColorMapping to a canonical dict[tuple[str | None,
+    # str], str] (evaluation, field) -> colormap_name. Returns an empty dict for
+    # None entries.
+    def _expand_color_mapping(
+        cm: ColorMapping,
+    ) -> dict[tuple[str | None, str], str]:
+        if cm is None:
+            return {}
+        if isinstance(cm, str):
+            # Single colormap for all evaluations and all fields
+            return {(None, agg_val): cm for agg_val in agg_values_list}
+        # It's a dict – inspect the first key to determine format.
+        first_key = next(iter(cm.keys()))
+        if isinstance(first_key, tuple):
+            # New format: keys are already (evaluation, field) tuples.
+            return dict(cm)  # type: ignore[arg-type]
         else:
-            # Check if it's the old format (dict[str, str]) or new format (dict[tuple, str])
-            # by examining the first key
-            first_key = next(iter(cmap.keys()))
-            if isinstance(first_key, tuple):
-                # New format: keys are (evaluation, field) tuples
-                _cmap_dict = cmap
-            else:
-                # Old format: keys are just evaluation strings
-                # Convert to new format by applying to all fields
-                _cmap_dict = {
-                    (eval_key, agg_val): colormap
-                    for eval_key, colormap in cmap.items()
-                    for agg_val in agg_values_list
-                }
+            # Old format: keys are evaluation strings; apply to all fields.
+            return {
+                (eval_key, agg_val): colormap
+                for eval_key, colormap in cm.items()  # type: ignore[union-attr]
+                for agg_val in agg_values_list
+            }
 
-        # Compute min/max for each field separately
-        _vmin_dict: dict[str, float] = {}
-        _vmax_dict: dict[str, float] = {}
-
-        for agg_val in agg_values_list:
-            # Get the aggregator for this field
-            aggregator = aggregators[agg_val]
-
-            # Extract data for this field from pivot
-            if len(agg_values_list) == 1:
-                # Single value - pivot is a simple DataFrame
-                _field_data = pivot
-            else:
-                # Multiple values - pivot has MultiIndex columns with field as first level
-                _field_data = pivot[column_renamings[agg_val]]
-
-            # Map back to base data and compute min/max for this field
-            _base_data = _unformat_data(_field_data, aggregator=aggregator)
-            _vmin_dict[agg_val] = _base_data.min().min()
-            _vmax_dict[agg_val] = _base_data.max().max()
-
-        for (_evaluation, _field), _cmap in _cmap_dict.items():
-            # Get the aggregator and min/max for this field
-            aggregator = aggregators[_field]
-            _vmin = _vmin_dict[_field]
-            _vmax = _vmax_dict[_field]
-
-            # Determine subset based on evaluation and field
-            if len(agg_values_list) == 1:
-                # Single value case
-                _subset = (
-                    pd.IndexSlice[[_evaluation], :]
-                    if _evaluation is not None
-                    else slice(None)
+    # Validate: no two ColorMapping instances may cover the same
+    # (evaluation, field) combination.
+    _seen_keys: dict[tuple[str | None, str], int] = {}
+    for _cm_idx, _cm in enumerate(cmap_list):
+        _expanded = _expand_color_mapping(_cm)
+        for _key in _expanded:
+            if _key in _seen_keys:
+                raise ValueError(
+                    (
+                        "Two ColorMapping instances (indices {first} and {second}) both "
+                        + "specify a cmap for (evaluation={eval!r}, field={field!r}). "
+                        + "Each (evaluation, field) combination must appear in at most one "
+                        + "ColorMapping so that min/max ranges are unambiguous."
+                    ).format(
+                        first=_seen_keys[_key],
+                        second=_cm_idx,
+                        eval=_key[0],
+                        field=_key[1],
+                    )
                 )
-            else:
-                # Multiple values case - need to select both field and evaluation
-                if _evaluation is not None:
-                    _subset = pd.IndexSlice[
-                        [_evaluation], column_renamings[__agg_values_dict[_field]]
-                    ]
+            _seen_keys[_key] = _cm_idx
+
+    # Apply each ColorMapping independently with its own min/max range.
+    if any(cm is not None for cm in cmap_list):
+        for _cm in cmap_list:
+            if _cm is None:
+                continue
+
+            _cmap_dict = _expand_color_mapping(_cm)
+            if not _cmap_dict:
+                continue
+
+            # Determine which (evaluation, field) pairs are covered by this
+            # ColorMapping so we can compute the min/max only over those rows.
+            _covered_fields: set[str] = {field for (_, field) in _cmap_dict}
+            _covered_evaluations: set[str | None] = {eval_ for (eval_, _) in _cmap_dict}
+
+            # Compute min/max for each field covered by this ColorMapping.
+            # The range is computed over all evaluations that appear in this
+            # ColorMapping (or all evaluations when None is present).
+            _vmin_dict: dict[str, float] = {}
+            _vmax_dict: dict[str, float] = {}
+
+            for agg_val in _covered_fields:
+                aggregator = aggregators[agg_val]
+
+                # Extract the full field data from the pivot table.
+                if len(agg_values_list) == 1:
+                    _field_data = pivot
                 else:
-                    _subset = pd.IndexSlice[
-                        :, column_renamings[__agg_values_dict[_field]]
+                    _field_data = pivot[column_renamings[agg_val]]
+
+                # If None is among the covered evaluations for this field, use
+                # all rows; otherwise restrict to the covered evaluations.
+                _evals_for_field: set[str | None] = {
+                    eval_ for (eval_, f) in _cmap_dict if f == agg_val
+                }
+                if None in _evals_for_field:
+                    # All evaluations contribute to the range.
+                    _range_data = _field_data
+                else:
+                    # Only the listed evaluations contribute.
+                    _eval_list = [e for e in _evals_for_field if e is not None]
+                    # The first level of the row MultiIndex is the evaluation.
+                    _range_data = _field_data.loc[
+                        _field_data.index.get_level_values(0).isin(_eval_list)
                     ]
 
-            # Apply a custom function that applies background_gradient using the
-            # "base" value of the data. See _unformatted_background_gradient and
-            # _unformat_data.
-            styler = styler.apply(
-                partial(_unformatted_background_gradient, aggregator=aggregator),
-                vmin=_vmin,
-                vmax=_vmax,
-                cmap=_cmap,
-                # Following parameters taken from implementation of Styler.background_gradient.
-                axis=0,
-                subset=_subset,
-                low=0,
-                high=0,
-                text_color_threshold=0.408,
-                gmap=None,
-            )
-            cmap_ranges[_field] = (_vmin, _vmax)
+                _base_data = _unformat_data(_range_data, aggregator=aggregator)
+                _vmin_dict[agg_val] = float(_base_data.min().min())
+                _vmax_dict[agg_val] = float(_base_data.max().max())
+
+            # Apply background gradient for each (evaluation, field) entry.
+            for (_evaluation, _field), _cmap_name in _cmap_dict.items():
+                aggregator = aggregators[_field]
+                _vmin = _vmin_dict[_field]
+                _vmax = _vmax_dict[_field]
+
+                # Determine the pandas IndexSlice subset.
+                if len(agg_values_list) == 1:
+                    _subset = (
+                        pd.IndexSlice[[_evaluation], :]
+                        if _evaluation is not None
+                        else slice(None)
+                    )
+                else:
+                    if _evaluation is not None:
+                        _subset = pd.IndexSlice[
+                            [_evaluation],
+                            column_renamings[__agg_values_dict[_field]],
+                        ]
+                    else:
+                        _subset = pd.IndexSlice[
+                            :,
+                            column_renamings[__agg_values_dict[_field]],
+                        ]
+
+                styler = styler.apply(
+                    partial(_unformatted_background_gradient, aggregator=aggregator),
+                    vmin=_vmin,
+                    vmax=_vmax,
+                    cmap=_cmap_name,
+                    # Following parameters taken from implementation of
+                    # Styler.background_gradient.
+                    axis=0,
+                    subset=_subset,
+                    low=0,
+                    high=0,
+                    text_color_threshold=0.408,
+                    gmap=None,
+                )
+                # Record the range used; later ColorMappings may overwrite this
+                # for the same field, which is intentional (last writer wins for
+                # the returned cmap_ranges dict).
+                cmap_ranges[_field] = (_vmin, _vmax)
 
         # Missing values should not have a colour, which is the default with
         # Styler.background_gradient
