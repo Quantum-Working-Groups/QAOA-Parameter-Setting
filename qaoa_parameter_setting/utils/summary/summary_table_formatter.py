@@ -462,6 +462,7 @@ def formatted_styler_for(
     optimized_marker: str | None = None,
     exclude_methods: list[str] | None = None,
     restrict_mps_to_aer: bool = False,
+    reference_methods: dict[tuple[str, str], str] | None = None,
 ) -> tuple[pd.DataFrame, Styler, dict[str, tuple[float, float]]]:
     """Format a dataframe as a pivot table with appropriate styling.
 
@@ -566,6 +567,19 @@ def formatted_styler_for(
         restrict_mps_to_aer: Restricts the table to methods that use the Qiskit
             Aer simulator, only for MPS energy evaluation methods. If False, all
             methods are shown for MPS. Defaults to False.
+        reference_methods: Optional dictionary mapping (evaluation_method, graph_type)
+            tuples to reference trainer config names. When provided, for each
+            (evaluation_method, graph_type) pair, only graph instances present in
+            the reference training method are included for all other training methods
+            with the same evaluation method and graph type. This ensures consistent
+            instance counts across training methods. For example::
+
+                reference_methods = {
+                    ("SV", "random_regular"): "F_SV.json",
+                    ("MPS", "heavy_hex"): "LR_PP_opt.json"
+                }
+
+            If None, no instance filtering is applied. Defaults to None.
 
     Raises:
         ValueError: If ``agg_values`` is an unrecognised value.
@@ -606,6 +620,22 @@ def formatted_styler_for(
             optimized_marker = "*"
         else:
             optimized_marker = "$^\\star$"
+
+    # *** Apply instance filtering if reference configs are provided
+    if reference_methods is not None:
+        # Determine the depth to use for filtering
+        filter_depth = None
+        if depths is not None:
+            if isinstance(depths, int):
+                filter_depth = depths
+            elif len(depths) == 1:
+                filter_depth = depths[0]
+            # If multiple depths, we don't filter by depth
+
+        table = table.filter_to_common_instances(
+            reference_methods=reference_methods,
+            depth=filter_depth,
+        )
 
     # *** Pivot dataframe and aggregate appropriately
     _data = table.to_dataframe()

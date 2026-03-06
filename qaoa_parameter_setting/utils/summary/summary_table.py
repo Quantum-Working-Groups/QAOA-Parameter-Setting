@@ -20,6 +20,8 @@ GraphKey: TypeAlias = str
 """GraphKey instance filename."""
 TrainerConfig: TypeAlias = str
 """Config filename for trainer."""
+TrainerMethod: TypeAlias = str
+"""Method name for trainer, mapped from a :type:`TrainerConfig`."""
 Depth: TypeAlias = int
 """Depth of QAOA."""
 ProblemClass: TypeAlias = Literal["MC", "MIS"]
@@ -746,3 +748,106 @@ class SummaryTable:
             "heavy_hex": "HH",
             "line_to_full": "L2F",
         }
+
+    def get_graph_instances_for_config(
+        self,
+        trainer_method: TrainerMethod,
+        graph_type: str | None = None,
+        depth: Depth | None = None,
+    ) -> set[GraphKey]:
+        """Get all graph instances for a given trainer config.
+
+        Args:
+            trainer_config: The trainer configuration to query.
+            graph_type: Optional graph type filter (e.g., "random_regular", "erdos_renyi").
+                If None, all graph types are included.
+            depth: Optional depth filter. If None, all depths are included.
+
+        Returns:
+            Set of graph keys (instance filenames) that have results for the given
+            trainer config, optionally filtered by graph type and depth.
+        """
+        instances: set[GraphKey] = set()
+
+        for graph_key, graph_data in self._data.items():
+            # Filter by graph type if specified
+            if graph_type is not None:
+                if Instance.graph_type(graph_key) != graph_type:
+                    continue
+
+            # Check if this trainer config exists for this graph. The trainer configs in graph_data
+            # must be mapped to methods, but we need the trainer config to index the graph data
+            # later.
+            trainer_config: TrainerMethod | None = None
+            for __trainer_config in graph_data.keys():
+                __current_method = self.trainer_config_to_method(__trainer_config)
+                if trainer_method == __current_method:
+                    trainer_config = __trainer_config
+            if trainer_config is None:
+                continue
+
+            # Filter by depth if specified
+            if depth is not None:
+                if depth not in graph_data[trainer_config]:
+                    continue
+
+            instances.add(graph_key)
+
+        return instances
+
+    def filter_to_common_instances(
+        self,
+        reference_methods: dict[tuple[str, str], TrainerConfig],
+        depth: Depth | None = None,
+    ) -> "SummaryTable":
+        """Filter data to only include graph instances common to reference configs.
+
+        For each (evaluation_method, graph_type) pair, this method identifies the
+        graph instances present in the reference training method and filters all
+        other training methods for that (evaluation_method, graph_type) to only
+        include those same instances.
+
+        Args:
+            reference_methods: Dictionary mapping (evaluation_method, graph_type)
+                tuples to reference trainer config names. For example:
+                {("SV", "random_regular"): "F_SV.json", ("MPS", "heavy_hex"): "I_MPS.json"}
+            depth: Optional depth to filter on. If None, filtering is done across
+                all depths.
+
+        Returns:
+            A new SummaryTable instance with filtered data.
+        """
+        # Create a new SummaryTable with the same metadata
+        filtered_table = SummaryTable(problem_class=self._problem_class)
+        filtered_table._methods = self._methods.copy()
+        filtered_table._additional_methods = self._additional_methods.copy()
+        filtered_table._minmax_data = self._minmax_data.copy()
+
+        # Build a mapping of (evaluation, graph_type) -> set of allowed instances
+        allowed_instances: dict[tuple[str, str], set[GraphKey]] = {}
+
+        for (eval_method, graph_type), ref_method in reference_methods.items():
+            instances = self.get_graph_instances_for_config(
+                trainer_method=ref_method,
+                graph_type=graph_type,
+                depth=depth,
+            )
+            allowed_instances[(eval_method, graph_type)] = instances
+
+        # Filter the data
+        for graph_key, graph_data in self._data.items():
+            current_graph_type = Instance.graph_type(graph_key)
+
+            for trainer_config, config_data in graph_data.items():
+                eval_method = self.trainer_config_to_evaluation(trainer_config)
+
+                # Check if we have a reference config for this (eval, graph_type)
+                key = (eval_method, current_graph_type)
+                if key not in allowed_instances or graph_key in allowed_instances[key]:
+                    # No filtering for this combination if key is not in allowed instances, or if
+                    # this graph instance is in the allowed set.
+                    if graph_key not in filtered_table._data:
+                        filtered_table._data[graph_key] = {}
+                    filtered_table._data[graph_key][trainer_config] = config_data.copy()
+
+        return filtered_table
