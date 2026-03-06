@@ -944,6 +944,13 @@ def formatted_styler_for(
                             column_renamings[__agg_values_dict[_field]],
                         ]
 
+                # Check if the subset would be empty, i.e., if the evaluation method is even present
+                # in the data. This can happen if show_empty_rows=False and there is insufficient
+                # data.
+                if _evaluation is not None:
+                    if _evaluation not in pivot.index.get_level_values(0):
+                        continue
+
                 styler = styler.apply(
                     partial(_unformatted_background_gradient, aggregator=aggregator),
                     vmin=_vmin,
@@ -962,7 +969,6 @@ def formatted_styler_for(
                 # for the same field, which is intentional (last writer wins for
                 # the returned cmap_ranges dict).
                 cmap_ranges[_field] = (_vmin, _vmax)
-
         # Missing values should not have a colour, which is the default with
         # Styler.background_gradient
         styler = styler.highlight_null(props="background-color:white;color:black")

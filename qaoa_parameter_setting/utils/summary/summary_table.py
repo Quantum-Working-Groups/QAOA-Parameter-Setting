@@ -9,10 +9,11 @@ from typing import Any, Literal, NoReturn, TypeAlias, TypedDict, overload
 import warnings
 
 import numpy as np
-import pandas as pd
 
+import pandas as pd
 from qaoa_parameter_setting.utils.graph_utils import maxcut_approximation_ratio
 import qaoa_parameter_setting.utils.instance as Instance
+from qaoa_training_pipeline.utils.problem_classes import PROBLEM_CLASSES
 
 # *** type aliases to make _data type hints easier.
 GraphKey: TypeAlias = str
@@ -80,24 +81,44 @@ def guess_problem_class(
 ) -> ProblemClass | None:
     """Guess the problem class from a filename and optional results dictionary.
 
-    Note that problem classes from the results dictionary will be converted to
-    upper case.
+    Args:
+        result_filename: The name of the result file.
+        result: The result dictionary.
+
+    Returns:
+        The problem class, or None if it could not be determined.
+    """
+    problem_class: ProblemClass | None = None
+    # First determine the problem class from the result dictionary, if provided.
+    if result is not None:
+        class_str = result.get("problem_class", None)
+        # Code taken from qaoa_training_pipeline/train.py
+        if class_str is not None:
+            class_info = class_str.split(":")
+            class_name = class_info[0].lower()
+
+            class_init_str = ""
+            if len(class_info) > 1:
+                class_init_str = class_info[1]
+
+            if class_name in PROBLEM_CLASSES:
+                problem_class = PROBLEM_CLASSES[class_name].from_str(class_init_str)
+    if problem_class is None:
+        # If no problem class was determined from the result dictionary, try to
+        # determine it from the filename.
+        problem_class = guess_problem_class_from_filename(result_filename)
+    return problem_class
+
+
+def guess_problem_class_from_filename(result_filename: str) -> ProblemClass | None:
+    """Guess the problem class from a filename.
 
     Args:
         result_filename: Filename for the results JSON.
-        result: Optional results dictionary as the parsed JSON data. If
-            provided, then problem class is determined from the results. If not
-            provided, only the filename is used. Defaults to None.
 
     Returns:
         The guessed problem class, or None if no class could be determined.
     """
-    # If we have a results dictionary, use that.
-    if result is not None:
-        _class = result.get("args", {}).get("problem_class", None)
-        if _class is not None:
-            return str(_class).upper()
-
     if "_MC_" in result_filename:
         return "MC"
     elif "_MIS_" in result_filename:
