@@ -21,3 +21,19 @@ ACRONYM_MAPPING = {
     "TQAAer": "TQA (Aer)",
 }
 """Mapping of method acronyms to full phrases."""
+
+ACRONYM_MAPPING_WITHOUT_AER_SUFFIX = {
+    "F": "Fourier",
+    "FAer": "Fourier",
+    "FAAer": "Fixed Angle",
+    "FA": "Fixed Angle",
+    "I": "Interp",
+    "IAer": "Interp",
+    "LR": "Linear Ramp",
+    "LRAer": "Linear Ramp",
+    "RTS": "Recursive TS",
+    "TS": "Recursive TS",
+    "TQA": "TQA",
+    "TQAAer": "TQA",
+}
+"""Mapping of method acronyms to full phrases, without ``(Aer)`` suffixes."""

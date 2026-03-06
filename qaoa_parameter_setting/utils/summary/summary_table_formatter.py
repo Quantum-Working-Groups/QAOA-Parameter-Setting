@@ -461,6 +461,7 @@ def formatted_styler_for(
     acronym_mapping: dict[str, str] | None = None,
     optimized_marker: str | None = None,
     exclude_methods: list[str] | None = None,
+    restrict_mps_to_aer: bool = False,
 ) -> tuple[pd.DataFrame, Styler, dict[str, tuple[float, float]]]:
     """Format a dataframe as a pivot table with appropriate styling.
 
@@ -562,6 +563,9 @@ def formatted_styler_for(
             acronyms will be filtered out. For example, passing ``["FA", "I"]``
             would exclude all Fixed Angle and Interpolation methods. If None,
             no methods are excluded. Defaults to None.
+        restrict_mps_to_aer: Restricts the table to methods that use the Qiskit
+            Aer simulator, only for MPS energy evaluation methods. If False, all
+            methods are shown for MPS. Defaults to False.
 
     Raises:
         ValueError: If ``agg_values`` is an unrecognised value.
@@ -692,6 +696,12 @@ def formatted_styler_for(
             )
         )
         filtered_data = filtered_data[mask]
+
+    if restrict_mps_to_aer:
+        # Remove rows where MPS is used without Aer
+        filtered_data = filtered_data[
+            ~((filtered_data["evaluation"] == "MPS") & (~filtered_data["uses_aer"]))
+        ]
 
     # *** Pivot table
     # Pivot and use aggregators - create separate pivot for each value if multiple

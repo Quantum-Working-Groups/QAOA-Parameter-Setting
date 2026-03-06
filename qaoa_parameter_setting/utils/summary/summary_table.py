@@ -225,6 +225,10 @@ class SummaryTable:
             "_{}".format(self.trainer_config_to_evaluation(trainer_config)), ""
         )
 
+    def method_uses_aer(self, method_config: str) -> bool:
+        """Return if the given method_config uses AER."""
+        return "Aer" in method_config
+
     def result_contains_noopt(self, result: dict[str, Any]) -> bool:
         """Returns if the given results dictionary contains a trainer whose zeroth iteration is a _noOpt run.
 
@@ -240,7 +244,7 @@ class SummaryTable:
         """
         config: str = result["args"]["config"]
         parts = Path(config).parts[-1].split(".")[0].split("_")
-        no_opt_matches = ["TQA", "FA", "TQAAer"]
+        no_opt_matches = ["TQA", "FA", "TQAAer", "LR", "LRAer"]
         if all(x not in parts for x in no_opt_matches):
             return False
         lower_parts = [p.lower() for p in parts]
@@ -669,6 +673,8 @@ class SummaryTable:
             else None
         )
 
+        _method = self.trainer_config_to_method(config)
+
         return {
             # Pandas will put the first keys as the first columns, so we put the
             # important columns first.
@@ -676,8 +682,9 @@ class SummaryTable:
             "graph_idx": Instance.graph_idx(graph_key),
             "num_nodes": Instance.num_nodes(graph_key),
             "trainer_config": config,
-            "method": self.trainer_config_to_method(config),
+            "method": _method,
             "depth": depth,
+            "uses_aer": self.method_uses_aer(_method),
             # We now put other _key_ information that is dependent on the graph type.
             "edge_probability": Instance.edge_probability(graph_key),
             "regular_degree": Instance.regular_degree(graph_key),
