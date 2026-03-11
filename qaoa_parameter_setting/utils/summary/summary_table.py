@@ -5,27 +5,24 @@ import glob
 import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Literal, NoReturn, TypeAlias, TypedDict, overload
+from typing import Any, Literal, NoReturn, TypeAlias, TypedDict, cast, overload
 import warnings
 
 import numpy as np
-
 import pandas as pd
+
 from qaoa_parameter_setting.utils.graph_utils import maxcut_approximation_ratio
 import qaoa_parameter_setting.utils.instance as Instance
-from qaoa_training_pipeline.utils.problem_classes import PROBLEM_CLASSES
 
-# *** type aliases to make _data type hints easier.
-GraphKey: TypeAlias = str
-"""GraphKey instance filename."""
-TrainerConfig: TypeAlias = str
-"""Config filename for trainer."""
-TrainerMethod: TypeAlias = str
-"""Method name for trainer, mapped from a :type:`TrainerConfig`."""
-Depth: TypeAlias = int
-"""Depth of QAOA."""
-ProblemClass: TypeAlias = Literal["MC", "MIS"]
-"""Optimization problem class."""
+from .utils import (
+    GraphKey,
+    Depth,
+    ProblemClass,
+    MethodConfigJSON,
+    MethodJSON,
+    MethodAcronym,
+    guess_problem_class,
+)
 
 
 class ResultDict(TypedDict):
@@ -38,7 +35,7 @@ class ResultDict(TypedDict):
     evaluation: str
 
 
-SummaryData: TypeAlias = dict[GraphKey, dict[TrainerConfig, dict[Depth, ResultDict]]]
+SummaryData: TypeAlias = dict[GraphKey, dict[MethodConfigJSON, dict[Depth, ResultDict]]]
 """TypeAlias for :class:`SummaryTable` internal data type hinting."""
 
 
@@ -75,57 +72,6 @@ def sanitize_instance_key(key: str) -> str:
         return str(PurePosixPath(PureWindowsPath(key)))
     # Cannot determine path type, so we try with the current system Path type.
     return str(PurePosixPath(Path(key)))
-
-
-def guess_problem_class(
-    result_filename: str,
-    result: dict[str, Any] | None = None,
-) -> ProblemClass | None:
-    """Guess the problem class from a filename and optional results dictionary.
-
-    Args:
-        result_filename: The name of the result file.
-        result: The result dictionary.
-
-    Returns:
-        The problem class, or None if it could not be determined.
-    """
-    problem_class: ProblemClass | None = None
-    # First determine the problem class from the result dictionary, if provided.
-    if result is not None:
-        class_str = result.get("problem_class", None)
-        # Code taken from qaoa_training_pipeline/train.py
-        if class_str is not None:
-            class_info = class_str.split(":")
-            class_name = class_info[0].lower()
-
-            class_init_str = ""
-            if len(class_info) > 1:
-                class_init_str = class_info[1]
-
-            if class_name in PROBLEM_CLASSES:
-                problem_class = PROBLEM_CLASSES[class_name].from_str(class_init_str)
-    if problem_class is None:
-        # If no problem class was determined from the result dictionary, try to
-        # determine it from the filename.
-        problem_class = guess_problem_class_from_filename(result_filename)
-    return problem_class
-
-
-def guess_problem_class_from_filename(result_filename: str) -> ProblemClass | None:
-    """Guess the problem class from a filename.
-
-    Args:
-        result_filename: Filename for the results JSON.
-
-    Returns:
-        The guessed problem class, or None if no class could be determined.
-    """
-    if "_MC_" in result_filename:
-        return "MC"
-    elif "_MIS_" in result_filename:
-        return "MIS"
-    return None
 
 
 def sanitize_energy(energy_val: float | None | Literal["NA"]) -> float | None:
@@ -231,7 +177,7 @@ class SummaryTable:
         """Return the data."""
         return self._data
 
-    def trainer_config_to_evaluation(self, trainer_config: TrainerConfig) -> str:
+    def trainer_config_to_evaluation(self, trainer_config: MethodConfigJSON) -> str:
         """Convert a trainer config to an abbreviation of the evaluation method."""
         if "PP" in trainer_config:
             return "PP"
@@ -244,10 +190,12 @@ class SummaryTable:
                 f"Unrecognised energy evaluation for method {trainer_config}"
             )
 
-    def trainer_config_to_method(self, trainer_config: TrainerConfig) -> str:
+    def trainer_config_to_method(self, trainer_config: MethodConfigJSON) -> MethodJSON:
         """Convert a trainer config to an evaluation-independent string."""
-        return trainer_config.replace(
-            "_{}".format(self.trainer_config_to_evaluation(trainer_config)), ""
+        return MethodJSON(
+            trainer_config.replace(
+                "_{}".format(self.trainer_config_to_evaluation(trainer_config)), ""
+            )
         )
 
     def method_uses_aer(self, method_config: str) -> bool:
@@ -314,9 +262,9 @@ class SummaryTable:
             noopt_trainer_config = opt_trainer_config.replace("opt", "no_opt")
         return noopt_trainer_config
 
-    def config_path_to_config(self, config_path: str) -> str:
+    def config_path_to_config(self, config_path: str) -> MethodConfigJSON:
         """Convert a string path to a config/method to just the config name."""
-        return config_path.split("/")[-1]
+        return MethodConfigJSON(config_path.split("/")[-1])
 
     def add_data(self, folder_name: str):
         """Load the training data from a folder and get the best result.
@@ -345,7 +293,9 @@ class SummaryTable:
                 continue
 
             # Get the energy evaluation methodology
-            config: TrainerConfig = self.config_path_to_config(result["args"]["config"])
+            config: MethodConfigJSON = self.config_path_to_config(
+                result["args"]["config"]
+            )
 
             # Check if we must translate an opt.json to noOpt.json entry.
 
@@ -361,7 +311,7 @@ class SummaryTable:
             graph: GraphKey = graph_input.split("/")[-1]
 
             # Loop over the trainers in the result
-            results: list[tuple[list[float], float | None, str, str]] = []
+            results: list[tuple[list[float], float | None, str, MethodConfigJSON]] = []
             self.populate_results(result, results, filename=filename, config=config)
 
             if graph not in self._data:
@@ -392,7 +342,9 @@ class SummaryTable:
                 if no_opt_config not in self._data[graph]:
                     self._data[graph][no_opt_config] = dict()
 
+            res_config: MethodConfigJSON
             for qaoa_angles, energy, trainer, res_config in results:
+                # res_config is MethodConfigJSON from populate_results
                 if qaoa_angles is None or energy is None:
                     continue
 
@@ -445,10 +397,10 @@ class SummaryTable:
                 )
             self._methods.append(self.config_path_to_config(filename))
 
-    def all_methods(self) -> list[str]:
+    def all_methods(self) -> list[MethodConfigJSON]:
         methods = [m for m in self._methods]
         methods.extend(self._additional_methods)
-        return list(sorted(set(methods)))
+        return [MethodConfigJSON(m) for m in sorted(set(methods))]
 
     def add_minmax_cut_data(self, folder_name: str, replace: bool = False):
         """Load the min-max cut data from a folder.
@@ -573,11 +525,11 @@ class SummaryTable:
 
     def populate_results(
         self,
-        result: dict,
-        result_data: list[tuple[list[float], float | None, str, str]],
+        result: dict[str, Any],
+        result_data: list[tuple[list[float], float | None, str, MethodConfigJSON]],
         filename: str | None = None,
         iter_keys: Iterable[str] | None = None,
-        config: str | None = None,
+        config: MethodConfigJSON | None = None,
     ):
         """Get the parameters from the `result` dict.
 
@@ -683,7 +635,7 @@ class SummaryTable:
     def __result_to_record(
         self,
         graph_key: GraphKey,
-        config: TrainerConfig,
+        config: MethodConfigJSON,
         depth: Depth,
         result: ResultDict,
     ) -> dict[str, Any]:
@@ -756,7 +708,7 @@ class SummaryTable:
 
     def get_graph_instances_for_config(
         self,
-        trainer_method: TrainerMethod,
+        trainer_method: MethodJSON,
         graph_type: str | None = None,
         depth: Depth | None = None,
         evaluation_method: str | None = None,
@@ -786,7 +738,7 @@ class SummaryTable:
             # Check if this trainer config exists for this graph. The trainer configs in graph_data
             # must be mapped to methods, but we need the trainer config to index the graph data
             # later. Also filter by evaluation method if specified.
-            trainer_config: TrainerMethod | None = None
+            trainer_config: MethodConfigJSON | None = None
             for __trainer_config in graph_data.keys():
                 __current_method = self.trainer_config_to_method(__trainer_config)
                 if trainer_method == __current_method:
@@ -813,7 +765,7 @@ class SummaryTable:
 
     def filter_to_common_instances(
         self,
-        reference_methods: dict[tuple[str, str], TrainerConfig],
+        reference_methods: dict[tuple[str, str], MethodJSON],
         depth: Depth | None = None,
     ) -> "SummaryTable":
         """Filter data to only include graph instances common to reference configs.
@@ -847,6 +799,7 @@ class SummaryTable:
                 trainer_method=ref_method,
                 graph_type=graph_type,
                 depth=depth,
+                evaluation_method=eval_method,
             )
             allowed_instances[(eval_method, graph_type)] = instances
 
@@ -913,7 +866,7 @@ class SummaryTable:
 
         for (eval_method, graph_type), ref_method in reference_methods.items():
             instances = self.get_graph_instances_for_config(
-                trainer_method=ref_method,
+                trainer_method=MethodJSON(ref_method),
                 graph_type=graph_type,
                 depth=depth,
                 evaluation_method=eval_method,

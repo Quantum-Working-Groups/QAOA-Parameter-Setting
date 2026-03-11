@@ -1,16 +1,25 @@
 """Class and function to summarise training data into LaTeX tables."""
 
-from .summary_table_formatter import (
-    formatted_styler_for,
-    format_method_name,
-)
 from .summary_table import SummaryTable
+from .summary_table_formatter import format_method_name, formatted_styler_for
 
 ACRONYM_MAPPING = {
     "F": "Fourier",
     "FAer": "Fourier (Aer)",
-    "FAAer": "Fixed Angle (Aer)",
-    "FA": "Fixed Angle",
+    "FAAer": {
+        # Optimised, i.e., with _opt.json
+        True: "Fixed Angle$^\\star$ (Aer)",
+        # Unoptimised, i.e., with _no_opt.json or _noOpt.json.
+        # Because FA by itself doesn't optimise, we use a dagger.
+        False: "Fixed Angle$^\\dagger$ (Aer)",
+    },
+    "FA": {
+        # Optimised, i.e., with _opt.json
+        True: "Fixed Angle$^\\star$",
+        # Unoptimised, i.e., with _no_opt.json or _noOpt.json.
+        # Because FA by itself doesn't optimise, we use a dagger.
+        False: "Fixed Angle$^\\dagger$",
+    },
     "I": "Interp",
     "IAer": "Interp (Aer)",
     "LR": "Linear Ramp",
@@ -26,8 +35,20 @@ ACRONYM_MAPPING = {
 ACRONYM_MAPPING_WITHOUT_AER_SUFFIX = {
     "F": "Fourier",
     "FAer": "Fourier",
-    "FAAer": "Fixed Angle",
-    "FA": "Fixed Angle",
+    "FAAer": {
+        # Optimised, i.e., with _opt.json
+        True: "Fixed Angle$^\\star$",
+        # Unoptimised, i.e., with _no_opt.json or _noOpt.json.
+        # Because FA by itself doesn't optimise, we use a dagger.
+        False: "Fixed Angle$^\\dagger$",
+    },
+    "FA": {
+        # Optimised, i.e., with _opt.json
+        True: "Fixed Angle$^\\star$",
+        # Unoptimised, i.e., with _no_opt.json or _noOpt.json.
+        # Because FA by itself doesn't optimise, we use a dagger.
+        False: "Fixed Angle$^\\dagger$",
+    },
     "I": "Interp",
     "IAer": "Interp",
     "LR": "Linear Ramp",

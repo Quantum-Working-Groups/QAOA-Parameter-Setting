@@ -1,17 +1,16 @@
 """Code to format a Pandas table generated from SummaryTable."""
 
-import re
 from abc import abstractmethod
 from collections.abc import Callable
 from functools import partial
-from itertools import product
-from typing import Any, Hashable, Literal, TypeAlias, TypeVar
+import re
+from typing import Any, Literal, TypeAlias, TypeVar
 
-import numpy as np
 import pandas as pd
 from pandas.io.formats.style import Styler, _background_gradient
 
 from qaoa_parameter_setting.utils.summary.summary_table import SummaryTable
+from qaoa_parameter_setting.utils.summary.utils import MethodJSON
 
 ColorMapping: TypeAlias = (
     str
@@ -104,7 +103,7 @@ def unwrap_latex_maths(val: str) -> str:
 
 def format_method_name(
     method_name: str,
-    acronym_mapping: dict[str, str],
+    acronym_mapping: dict[str, str | dict[bool, str]],
     optimized_marker: str = "*",
 ) -> str:
     """Format a method name using acronym mapping and optimization detection.
@@ -115,7 +114,12 @@ def format_method_name(
 
     Args:
         method_name: The method name to format (e.g., "FA_MPS_opt", "TQA_PP_no_opt")
-        acronym_mapping: Dictionary mapping acronyms to human-readable phrases
+        acronym_mapping: Dictionary mapping acronyms to human-readable phrases. If a value is a
+            dictionary, the boolean key indicates optimisation. I.e., the formatted method name for
+            ``FA_no_opt.json`` and ``acronym_mapping={True: "FA$^\\star$", False: "FA$^\\dagger$"}``
+            will be ``"FA$^\\dagger"``. If a string value is provided, instead of a sub-dictionary,
+            then optimisation is determined by the presence of ``"_opt"`` in ``method_name``. If the
+            method has optimisation, ``optimized_marker`` is appended at the end as superscript.
         optimized_marker: String to append for optimized methods. Defaults to "*".
 
     Returns:
@@ -156,10 +160,12 @@ def format_method_name(
             is_optimized = True
 
     # Build the result
-    result = phrase
-    if is_optimized:
-        result += optimized_marker
-
+    if isinstance(phrase, str):
+        result = phrase
+        if is_optimized:
+            result += optimized_marker
+    else:
+        result = phrase[is_optimized]
     return result
 
 
@@ -241,10 +247,9 @@ class AggregatorFormatter:
             _start, _end = unwrap_latex_maths(val).split("--")
             return (float(_start), float(_end))
         else:
-            import re
-
             pattern = re.compile(r".*{([\d\.]+)}{([\d\.]+)}")
             match = pattern.search(val)
+            assert match is not None
             return (float(match.group(1)), float(match.group(2)))
 
     def _format_num(self, val: float | int) -> str:
@@ -280,10 +285,9 @@ class AggregatorFormatter:
                 return float(unwrap_latex_maths(val))
             return int(unwrap_latex_maths(val))
         else:
-            import re
-
             pattern = re.compile(r".*{([\d\.]+)}")
             match = pattern.search(val)
+            assert match is not None
             _arg = match.group(1)
             return float(_arg)
 
@@ -324,10 +328,9 @@ class AggregatorFormatter:
             _val, _uncertainty = unwrap_latex_maths(val).split(r"\pm ")
             return (float(_val), float(_uncertainty))
         else:
-            import re
-
             pattern = re.compile(r".*{([\d\.]+)\+-([\d\.]+)}")
             match = pattern.search(val)
+            assert match is not None
             _mean = match.group(1)
             _uncertainty = match.group(2)
             return (float(_mean), float(_uncertainty))
@@ -462,7 +465,7 @@ def formatted_styler_for(
     optimized_marker: str | None = None,
     exclude_methods: list[str] | None = None,
     restrict_mps_to_aer: bool = False,
-    reference_methods: dict[tuple[str, str], str] | None = None,
+    reference_methods: dict[tuple[str, str], MethodJSON] | None = None,
 ) -> tuple[pd.DataFrame, Styler, dict[str, tuple[float, float]]]:
     """Format a dataframe as a pivot table with appropriate styling.
 
