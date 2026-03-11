@@ -19,6 +19,7 @@ ACRONYM_MAPPING = {
     "TS": "Recursive TS",
     "TQA": "TQA",
     "TQAAer": "TQA (Aer)",
+    "PT": "Param. Transfer",
 }
 """Mapping of method acronyms to full phrases."""
 
@@ -35,5 +36,6 @@ ACRONYM_MAPPING_WITHOUT_AER_SUFFIX = {
     "TS": "Recursive TS",
     "TQA": "TQA",
     "TQAAer": "TQA",
+    "PT": "Param. Transfer",
 }
 """Mapping of method acronyms to full phrases, without ``(Aer)`` suffixes."""

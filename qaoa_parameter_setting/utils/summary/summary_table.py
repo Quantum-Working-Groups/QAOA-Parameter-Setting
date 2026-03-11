@@ -187,10 +187,12 @@ class SummaryTable:
         self._data: SummaryData = {}
         self._minmax_data: MinMaxData = {}
         self._methods: list[str] = []
-        self._additional_methods: list[str] = []
-        """List of additional methods that may not have a method JSON.
+        self._additional_methods: set[str] = set()
+        """Set of additional methods that may not have a method JSON.
 
-        They are no-opt methods from the zeroth iteration of an opt method."""
+        The set consists of methods from training data where a method JSON is not known and no-opt
+        methods from the zeroth iteration of an opt method.
+        """
 
         self._problem_class: ProblemClass | None = problem_class
 
@@ -267,7 +269,7 @@ class SummaryTable:
         """
         config: str = result["args"]["config"]
         parts = Path(config).parts[-1].split(".")[0].split("_")
-        no_opt_matches = ["TQA", "FA", "TQAAer", "LR", "LRAer"]
+        no_opt_matches = ["TQA", "FA", "FAAer", "TQAAer"]
         if all(x not in parts for x in no_opt_matches):
             return False
         lower_parts = [p.lower() for p in parts]
@@ -367,15 +369,18 @@ class SummaryTable:
             if config not in self._data[graph]:
                 self._data[graph][config] = dict()
 
+            # Track this config in additional_methods if it's not in methods
+            # This ensures configs with data but no method JSON file are included
+            if config not in self._methods and config not in self._additional_methods:
+                self._additional_methods.add(config)
+
             # Check if we need to add the zeroth iteration, for opt to no-opt
             # trainer mappings.
             if self.result_contains_noopt(result):
                 no_opt_config = self.config_path_to_config(
                     self.trainer_config_to_no_opt(result)
                 )
-                self._additional_methods.append(
-                    self.config_path_to_config(no_opt_config)
-                )
+                self._additional_methods.add(self.config_path_to_config(no_opt_config))
                 self.populate_results(
                     result,
                     results,
@@ -754,18 +759,21 @@ class SummaryTable:
         trainer_method: TrainerMethod,
         graph_type: str | None = None,
         depth: Depth | None = None,
+        evaluation_method: str | None = None,
     ) -> set[GraphKey]:
         """Get all graph instances for a given trainer config.
 
         Args:
-            trainer_config: The trainer configuration to query.
+            trainer_method: The trainer method to query (e.g., "LR_opt.json").
             graph_type: Optional graph type filter (e.g., "random_regular", "erdos_renyi").
                 If None, all graph types are included.
             depth: Optional depth filter. If None, all depths are included.
+            evaluation_method: Optional evaluation method filter (e.g., "SV", "MPS", "PP").
+                If None, all evaluation methods are included.
 
         Returns:
             Set of graph keys (instance filenames) that have results for the given
-            trainer config, optionally filtered by graph type and depth.
+            trainer method, optionally filtered by graph type, depth, and evaluation method.
         """
         instances: set[GraphKey] = set()
 
@@ -777,12 +785,20 @@ class SummaryTable:
 
             # Check if this trainer config exists for this graph. The trainer configs in graph_data
             # must be mapped to methods, but we need the trainer config to index the graph data
-            # later.
+            # later. Also filter by evaluation method if specified.
             trainer_config: TrainerMethod | None = None
             for __trainer_config in graph_data.keys():
                 __current_method = self.trainer_config_to_method(__trainer_config)
                 if trainer_method == __current_method:
+                    # If evaluation_method is specified, check if it matches
+                    if evaluation_method is not None:
+                        __current_eval = self.trainer_config_to_evaluation(
+                            __trainer_config
+                        )
+                        if __current_eval != evaluation_method:
+                            continue
                     trainer_config = __trainer_config
+                    break
             if trainer_config is None:
                 continue
 
@@ -851,3 +867,228 @@ class SummaryTable:
                     filtered_table._data[graph_key][trainer_config] = config_data.copy()
 
         return filtered_table
+
+    def get_missing_instances_after_filter(
+        self,
+        reference_methods: dict[tuple[str, str], str],
+        depth: Depth | None = None,
+        num_nodes: int | list[int] | dict[str, int | list[int]] | None = None,
+        methods_to_exclude: list[str] | None = None,
+    ) -> dict[tuple[str, str, str], set[GraphKey]]:
+        """Identify missing graph instances for each (eval_method, graph_type, trainer_method).
+
+        After filtering to common instances based on reference methods, this identifies
+        which graph instances are missing for each training method. This is useful for
+        determining which experiments need to be run to complete the dataset.
+
+        Args:
+            reference_methods: Dictionary mapping (evaluation_method, graph_type)
+                tuples to reference trainer method names (without evaluation suffix).
+                For example: {("SV", "line_to_full"): "LR_opt.json"}
+                The evaluation method from the key will be used to find the right config.
+            depth: Optional depth to filter on. If None, checks across all depths.
+            num_nodes: Optional filter for number of nodes. Can be:
+                - int: Only include instances with this number of nodes
+                - list[int]: Include instances with any of these numbers of nodes
+                - dict[str, int | list[int]]: Per-evaluation method filtering
+            methods_to_exclude: Optional list of methods to exclude when compiling list of missing
+                instances. If None, all methods are included. Defaults to None.
+
+        Returns:
+            Dictionary mapping (eval_method, graph_type, trainer_method) tuples to sets
+            of missing graph keys. Only includes entries where instances are missing.
+
+        Example:
+            >>> missing = table.get_missing_instances_after_filter(
+            ...     {("SV", "line_to_full"): "LR_opt.json"},
+            ...     depth=10
+            ... )
+            >>> # Returns: {("SV", "line_to_full", "FA"): {"000N40L2S8.json", ...}}
+        """
+        if methods_to_exclude is None:
+            methods_to_exclude = []
+
+        # Build mapping of (eval, graph_type) -> set of reference instances
+        reference_instances: dict[tuple[str, str], set[GraphKey]] = {}
+
+        for (eval_method, graph_type), ref_method in reference_methods.items():
+            instances = self.get_graph_instances_for_config(
+                trainer_method=ref_method,
+                graph_type=graph_type,
+                depth=depth,
+                evaluation_method=eval_method,
+            )
+
+            # Apply num_nodes filtering
+            if num_nodes is not None:
+                filtered_instances = set()
+                for graph_key in instances:
+                    graph_num_nodes = Instance.num_nodes(graph_key)
+                    if graph_num_nodes is None:
+                        continue
+
+                    # Check if this instance should be included based on num_nodes filter
+                    if isinstance(num_nodes, dict):
+                        # Per-evaluation filtering
+                        if eval_method not in num_nodes:
+                            # No filter for this evaluation method, include all
+                            filtered_instances.add(graph_key)
+                        else:
+                            allowed = num_nodes[eval_method]
+                            if isinstance(allowed, int):
+                                allowed = [allowed]
+                            if graph_num_nodes in allowed:
+                                filtered_instances.add(graph_key)
+                    else:
+                        # Global filtering
+                        allowed_nodes = (
+                            [num_nodes] if isinstance(num_nodes, int) else num_nodes
+                        )
+                        if graph_num_nodes in allowed_nodes:
+                            filtered_instances.add(graph_key)
+
+                instances = filtered_instances
+
+            reference_instances[(eval_method, graph_type)] = instances
+
+        # Find missing instances for each method
+        missing: dict[tuple[str, str, str], set[GraphKey]] = {}
+
+        # For each (eval, graph_type) pair with a reference
+        for (
+            eval_method,
+            graph_type,
+        ), expected_instances in reference_instances.items():
+            # Get trainer methods that actually have data for this specific (eval_method, graph_type)
+            # This ensures we only check methods that are compatible with the evaluation method
+            relevant_trainer_methods = set()
+
+            for graph_key, graph_data in self._data.items():
+                # Extract trainer methods from configs that match this evaluation method
+                for trainer_config in graph_data.keys():
+                    try:
+                        config_eval = self.trainer_config_to_evaluation(trainer_config)
+                        # Only include if evaluation method matches
+                        if config_eval == eval_method:
+                            trainer_method = self.trainer_config_to_method(
+                                trainer_config
+                            )
+                            # If this trainer method should be excluded, do not process it.
+                            if trainer_method in methods_to_exclude:
+                                continue
+                            relevant_trainer_methods.add(trainer_method)
+                    except ValueError:
+                        # Skip configs with unrecognized evaluation methods
+                        continue
+
+            # Check each relevant trainer method
+            for trainer_method in relevant_trainer_methods:
+                # Get instances this method actually has
+                actual_instances = self.get_graph_instances_for_config(
+                    trainer_method=trainer_method,
+                    graph_type=graph_type,
+                    depth=depth,
+                    evaluation_method=eval_method,
+                )
+
+                # Apply num_nodes filtering to actual instances
+                if num_nodes is not None:
+                    filtered_actual = set()
+                    for graph_key in actual_instances:
+                        graph_num_nodes = Instance.num_nodes(graph_key)
+                        if graph_num_nodes is None:
+                            continue
+
+                        if isinstance(num_nodes, dict):
+                            if eval_method not in num_nodes:
+                                filtered_actual.add(graph_key)
+                            else:
+                                allowed = num_nodes[eval_method]
+                                if isinstance(allowed, int):
+                                    allowed = [allowed]
+                                if graph_num_nodes in allowed:
+                                    filtered_actual.add(graph_key)
+                        else:
+                            allowed_nodes = (
+                                [num_nodes] if isinstance(num_nodes, int) else num_nodes
+                            )
+                            if graph_num_nodes in allowed_nodes:
+                                filtered_actual.add(graph_key)
+
+                    actual_instances = filtered_actual
+
+                # Find missing instances
+                missing_instances = expected_instances - actual_instances
+
+                # Only include if there are missing instances
+                if missing_instances:
+                    key = (eval_method, graph_type, trainer_method)
+                    missing[key] = missing_instances
+
+        return missing
+
+    def get_missing_instances_summary(
+        self,
+        reference_methods: dict[tuple[str, str], str],
+        depth: Depth | None = None,
+        num_nodes: int | list[int] | dict[str, int | list[int]] | None = None,
+        methods_to_exclude: list[str] | None = None,
+    ) -> pd.DataFrame:
+        """Get a summary DataFrame of missing instances after filtering.
+
+        This provides a human-readable summary of which experiments need to be run,
+        organized by evaluation method, graph type, and trainer method.
+
+        Args:
+            reference_methods: Dictionary mapping (evaluation_method, graph_type)
+                tuples to reference trainer method names (without evaluation suffix).
+                For example: {("SV", "line_to_full"): "LR_opt.json"}
+            depth: Optional depth to filter on. If None, checks across all depths.
+            num_nodes: Optional filter for number of nodes. Can be:
+                - int: Only include instances with this number of nodes
+                - list[int]: Include instances with any of these numbers of nodes
+                - dict[str, int | list[int]]: Per-evaluation method filtering
+            methods_to_exclude: Optional list of methods to exclude when getting the missing
+                instances. These methods will be ignored when compiling the list of instances to
+                run. If None, no methods are excluded.
+
+        Returns:
+            DataFrame with columns: eval_method, graph_type, trainer_method,
+            num_missing, missing_instances (list of graph keys).
+
+        Example:
+            >>> summary = table.get_missing_instances_summary(
+            ...     {("SV", "random_regular"): "TQA_SV_opt"},
+            ...     num_nodes=40
+            ... )
+            >>> print(summary)
+        """
+        if methods_to_exclude is None:
+            methods_to_exclude = []
+        missing = self.get_missing_instances_after_filter(
+            reference_methods=reference_methods,
+            depth=depth,
+            num_nodes=num_nodes,
+            methods_to_exclude=methods_to_exclude,
+        )
+
+        records = []
+        for (eval_method, graph_type, trainer_method), instances in missing.items():
+            records.append(
+                {
+                    "eval_method": eval_method,
+                    "graph_type": graph_type,
+                    "trainer_method": trainer_method,
+                    "num_missing": len(instances),
+                    "missing_instances": sorted(list(instances)),
+                }
+            )
+
+        df = pd.DataFrame.from_records(records)
+        if not df.empty:
+            df = df.sort_values(
+                ["eval_method", "graph_type", "num_missing", "trainer_method"],
+                ascending=[True, True, False, True],
+            )
+
+        return df
