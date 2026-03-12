@@ -9,6 +9,7 @@ from typing import Any, Literal, TypeAlias, TypeVar
 import pandas as pd
 from pandas.io.formats.style import Styler, _background_gradient
 
+from .constants import METHOD_OPTMARKER_PLACEHOLDER
 from qaoa_parameter_setting.utils.summary.summary_table import SummaryTable
 from qaoa_parameter_setting.utils.summary.utils import MethodJSON
 
@@ -36,6 +37,21 @@ All entries within a single :data:`ColorMapping` share the same min/max range pe
 """
 
 __slots__ = ["formatted_styler_for", "convert_evaluation_to_multicolumn_latex"]
+
+
+def upgrade_label_to_latex(
+    label: str,
+    target_format: Literal["text", "latex", "siunitx"],
+    optimized_marker: str,
+) -> str:
+    # Replace the placeholder with the actual optimized marker for all formats
+    label = label.replace(METHOD_OPTMARKER_PLACEHOLDER, optimized_marker)
+
+    # Apply LaTeX-specific formatting
+    if target_format == "latex" or target_format == "siunitx":
+        label = label.replace("†", "$^\\dagger$")
+
+    return label
 
 
 def __rename_index(obj, rename_func: Callable[[str], str]):
@@ -99,74 +115,6 @@ def wrap_latex_maths(val: str) -> str:
 def unwrap_latex_maths(val: str) -> str:
     """Remove LaTeX maths delimiters from the ends of val."""
     return val.removeprefix("$").removesuffix("$")
-
-
-def format_method_name(
-    method_name: str,
-    acronym_mapping: dict[str, str | dict[bool, str]],
-    optimized_marker: str = "*",
-) -> str:
-    """Format a method name using acronym mapping and optimization detection.
-
-    Method names follow the pattern: ACRONYM[_PART]*[_opt|_noOpt|_no_opt]
-    where ACRONYM is mapped to a phrase, and optimization status is indicated
-    by a marker (default: asterisk).
-
-    Args:
-        method_name: The method name to format (e.g., "FA_MPS_opt", "TQA_PP_no_opt")
-        acronym_mapping: Dictionary mapping acronyms to human-readable phrases. If a value is a
-            dictionary, the boolean key indicates optimisation. I.e., the formatted method name for
-            ``FA_no_opt.json`` and ``acronym_mapping={True: "FA$^\\star$", False: "FA$^\\dagger$"}``
-            will be ``"FA$^\\dagger"``. If a string value is provided, instead of a sub-dictionary,
-            then optimisation is determined by the presence of ``"_opt"`` in ``method_name``. If the
-            method has optimisation, ``optimized_marker`` is appended at the end as superscript.
-        optimized_marker: String to append for optimized methods. Defaults to "*".
-
-    Returns:
-        Formatted method name with phrase and optional optimization marker.
-
-    Examples:
-        >>> format_method_name("FA_MPS_opt", {"FA": "Fixed Angle"})
-        "Fixed Angle*"
-        >>> format_method_name("TQA_PP_no_opt", {"TQA": "TQA"})
-        "TQA"
-        >>> format_method_name("I_SV", {"I": "Interp"})
-        "Interp"
-    """
-    # Split the method name by underscores
-    parts = method_name.split("_")
-
-    # The first part is the acronym
-    if not parts:
-        return method_name
-
-    acronym = parts[0]
-
-    # Get the phrase from the mapping, or use the acronym if not found
-    phrase = acronym_mapping.get(acronym, acronym)
-
-    # Check for optimization status in the remaining parts
-    # Methods with "opt" (but not "noOpt" or "no_opt") are optimized
-    # Methods without any opt-related suffix are unoptimized
-    is_optimized = False
-
-    # Join remaining parts to check for optimization patterns
-    remaining = "_".join(parts[1:]).lower() if len(parts) > 1 else ""
-
-    # Check if "opt" appears but not as part of "noopt" or "no_opt"
-    if "opt" in remaining:
-        # Check if it's explicitly marked as not optimized
-        if "noopt" not in remaining and "no_opt" not in remaining:
-            is_optimized = True
-
-    # Build the result
-    if isinstance(phrase, str):
-        result = phrase
-        if is_optimized:
-            result += optimized_marker
-    else:
-        result = phrase[is_optimized]
-    return result
 
 
 class AggregatorFormatter:
@@ -461,7 +409,6 @@ def formatted_styler_for(
     | None = None,
     missing_data_str: str = "-",
     show_empty_rows: bool = True,
-    acronym_mapping: dict[str, str] | None = None,
     optimized_marker: str | None = None,
     exclude_methods: list[str] | None = None,
     restrict_mps_to_aer: bool = False,
@@ -553,15 +500,9 @@ def formatted_styler_for(
             another depth, then the row for ``TQA`` will still be shown. If
             False, only row values present in the displayed data is shown.
             Defaults to False.
-        acronym_mapping: Optional dictionary mapping method acronyms (e.g., "FA",
-            "TQA") to human-readable phrases (e.g., "Fixed Angle", "TQA"). Method
-            names are automatically formatted using :func:`format_method_name` to
-            include the phrase and an optimization marker. If None, method names
-            are used as-is. Defaults to None.
-        optimized_marker: String to append to method names that have
-            optimization enabled (e.g., methods ending in "_opt"). If None,
-            either ``"*"`` or ``"$^\\star$"`` is used, depending on
-            ``target_format``. Defaults to None.
+        optimized_marker: This parameter is no longer used.
+            Method labels are now determined by the METHOD_CONFIG_TO_LABELS
+            constant in the constants module. Defaults to None.
         exclude_methods: Optional list of method acronyms to exclude from the
             formatted table. Methods whose names start with any of these
             acronyms will be filtered out. For example, passing ``["FA", "I"]``
@@ -618,6 +559,7 @@ def formatted_styler_for(
         assert _agg_value in precision, (
             f"{_agg_value} not found in precision dictionary."
         )
+    # Determine the optimized marker to use for replacing METHOD_OPTMARKER_PLACEHOLDER
     if optimized_marker is None:
         if target_format == "text":
             optimized_marker = "*"
@@ -745,7 +687,7 @@ def formatted_styler_for(
             columns=["graph_type"],
             index=[
                 "evaluation",
-                "method",
+                "method_label",
             ],
             values=__agg_values_dict[agg_val],
             aggfunc=aggregators[agg_val],  # type:ignore
@@ -756,7 +698,7 @@ def formatted_styler_for(
             columns=["graph_type"],
             index=[
                 "evaluation",
-                "method",
+                "method_label",
             ],
             values=[__agg_values_dict[agg_val] for agg_val in agg_values_list],
             # values=agg_values_list,
@@ -771,11 +713,24 @@ def formatted_styler_for(
     # figure out which attributes we have in the columns, and (iii) create a
     # list of tuples appropriate for reindexing.
 
-    # Row index should include the evaluation method and trainer config, even
+    # Row index should include the evaluation method and method label, even
     # though one is derived from the other.
     if show_empty_rows:
         # Filter out excluded methods when creating the row index
+        # Build list of (evaluation, method_label) tuples from all methods
+        from .constants import METHOD_CONFIG_TO_LABELS
+
         _methods_to_include = table.all_methods()
+        # Remove non-Aer methods restrict_mps_to_aer is True
+        if restrict_mps_to_aer:
+            # We only include methods that (1) are for PP or SV or (2) are for MPS and use Aer.
+            _methods_to_include = [
+                _method
+                for _method in _methods_to_include
+                if table.trainer_config_to_evaluation(_method) != "MPS"
+                or "Aer" in table.trainer_config_to_method(_method)
+            ]
+        # If exclude_methods is provided, we must remove those methods
         if exclude_methods is not None:
             _methods_to_include = [
                 _method_json
@@ -786,23 +741,22 @@ def formatted_styler_for(
                 )
             ]
 
-        _row_index = pd.MultiIndex.from_tuples(
-            sorted(
-                [
-                    (
-                        table.trainer_config_to_evaluation(_method_json),
-                        table.trainer_config_to_method(_method_json),
-                    )
-                    for _method_json in _methods_to_include
-                ]
+        # Create tuples and deduplicate since multiple MethodConfigJSON can map to same label
+        _row_tuples = [
+            (
+                table.trainer_config_to_evaluation(_method_json),
+                METHOD_CONFIG_TO_LABELS[table.trainer_config_to_method(_method_json)],
             )
-        )
+            for _method_json in _methods_to_include
+        ]
+        # Remove duplicates while preserving order, then sort
+        _row_index = pd.MultiIndex.from_tuples(sorted(list(dict.fromkeys(_row_tuples))))
     else:
         _row_index = pivot.index.sort_values()
 
     # Reindex:
-    # 1. The trainer config row index now has two columns: the evaluation method
-    #    and the training method. All methods are included.
+    # 1. The row index now has two columns: the evaluation method
+    #    and the method label. All methods are included.
     # 2. The columns contain the same number of rows. But now depth and
     #    num_nodes will contain all values if ``depths`` and ``num_nodes`` are
     #    None, respectively. Other columns will always contain all unique
@@ -814,18 +768,15 @@ def formatted_styler_for(
 
     # Rename columns to use graph types from table.
     pivot = pivot.rename(columns=table.formatter_graph_type())
-    # Remove suffixes ".json" from columns and indexes.
-    pivot = remove_json_suffix_df(pivot)
-    # Rename method names if acronym mapping is provided
-    if acronym_mapping is not None:
-        # Get all unique method names from the index
-        method_names = pivot.index.get_level_values(1).unique().tolist()
-        # Create the method name mapping using the acronym mapping
-        method_name_mapping = {
-            _method: format_method_name(_method, acronym_mapping, optimized_marker)
-            for _method in method_names
-        }
-        pivot = pivot.rename(index=method_name_mapping, level=1)
+
+    # Create a mapping to replace the placeholder in method labels (level 1)
+    label_mapping = {
+        label: upgrade_label_to_latex(
+            label, target_format=target_format, optimized_marker=optimized_marker
+        )
+        for label in pivot.index.get_level_values(1).unique()
+    }
+    pivot = pivot.rename(index=label_mapping, level=1)
 
     # Rename columns
     column_renamings = {

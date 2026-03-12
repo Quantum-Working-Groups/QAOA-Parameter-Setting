@@ -5,9 +5,10 @@ import glob
 import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Literal, NoReturn, TypeAlias, TypedDict, cast, overload
+from typing import Any, Literal, NoReturn, TypeAlias, TypedDict, overload
 import warnings
 
+from .constants import METHOD_CONFIG_TO_LABELS
 import numpy as np
 import pandas as pd
 
@@ -162,6 +163,7 @@ class SummaryTable:
 
                 self._minmax_data = _data["minmax_data"]
                 self._methods = _data["methods"]
+                self._additional_methods = set(_data["additional_methods"])
 
                 # The default is None, where we accept all. This allows us to
                 # handle old saved JSON tables, where all data was included.
@@ -598,6 +600,7 @@ class SummaryTable:
                     "minmax_data": self._minmax_data,
                     "methods": self._methods,
                     "problem_class": self._problem_class,
+                    "additional_methods": list(self._additional_methods),
                 },
                 fout,
             )
@@ -663,6 +666,7 @@ class SummaryTable:
             "num_nodes": Instance.num_nodes(graph_key),
             "trainer_config": config,
             "method": _method,
+            "method_label": METHOD_CONFIG_TO_LABELS[_method],
             "depth": depth,
             "uses_aer": self.method_uses_aer(_method),
             # We now put other _key_ information that is dependent on the graph type.
