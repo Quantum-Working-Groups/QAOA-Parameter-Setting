@@ -1,24 +1,28 @@
 """Allows us to parse the training data and summarise each method's performance."""
 
+from collections.abc import Iterable
 import glob
 import json
 import os
-import warnings
-from collections.abc import Iterable
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Literal, NoReturn, TypeAlias, TypedDict, overload
+import warnings
 
+import numpy as np
 import pandas as pd
 
-import qaoa_parameter_setting.utils.instance as Instance
 from qaoa_parameter_setting.utils.graph_utils import maxcut_approximation_ratio
+import qaoa_parameter_setting.utils.instance as Instance
 
 # *** type aliases to make _data type hints easier.
 GraphKey: TypeAlias = str
 """GraphKey instance filename."""
 TrainerConfig: TypeAlias = str
 """Config filename for trainer."""
-Depth: TypeAlias = str
-"""Depth of QAOA. For consistency with BestParameters we treat it as a string."""
+Depth: TypeAlias = int
+"""Depth of QAOA."""
+ProblemClass: TypeAlias = Literal["MC", "MIS"]
+"""Optimization problem class."""
 
 
 class ResultDict(TypedDict):
@@ -51,6 +55,77 @@ MinMaxData: TypeAlias = dict[GraphKey, MinMaxResult]
 """TypeAlias for min-max cut data for graph instances."""
 
 
+def sanitize_instance_key(key: str) -> str:
+    """Convert instance keys, i.e., paths, into Posix paths for consistency.
+
+    Args:
+        key: The instance key, which can be a windows or posix path.
+
+    Returns:
+        ``key`` as an equivalent posix path.
+    """
+    if "/" in key:
+        # Probably a PosixPath, but we convert to make sure.
+        return str(PurePosixPath(key))
+    if "\\" in key:
+        # Probably a WindowsPath, but we convert to make sure.
+        return str(PurePosixPath(PureWindowsPath(key)))
+    # Cannot determine path type, so we try with the current system Path type.
+    return str(PurePosixPath(Path(key)))
+
+
+def guess_problem_class(
+    result_filename: str,
+    result: dict[str, Any] | None = None,
+) -> ProblemClass | None:
+    """Guess the problem class from a filename and optional results dictionary.
+
+    Args:
+        result_filename: Filename for the results JSON.
+        result: Optional results dictionary as the parsed JSON data. If
+            provided, then problem class is determined from the results. If not
+            provided, only the filename is used. Defaults to None.
+
+    Returns:
+        The guessed problem class, or None if no class could be determined.
+    """
+    # If we have a results dictionary, use that.
+    if result is not None:
+        _class = result.get("args", {}).get("problem_class", None)
+        if _class is not None:
+            return _class
+
+    if "_MC_" in result_filename:
+        return "MC"
+    elif "_MIS_" in result_filename:
+        return "MIS"
+    return None
+
+
+def sanitize_energy(energy_val: float | None | Literal["NA"]) -> float | None:
+    """Sanitize an energy value from a results dictionary.
+
+    Args:
+        energy_val: Energy from a results dictionary, which can be a floating value, None, or ``"NA"``.
+
+    Raises:
+        ValueError: If the energy is an unknown string.
+        ValueError: If the energy is an unknown type.
+
+    Returns:
+        A float value or None, representing the input energy. ``"NA`` is mapped to None.
+    """
+    if isinstance(energy_val, str):
+        if energy_val == "NA":
+            return None
+        else:
+            raise ValueError(f"Unknown energy value: {energy_val!r}")
+    elif energy_val is None or isinstance(energy_val, (float, np.floating)):
+        return energy_val
+    else:
+        raise ValueError(f"Unknown energy value type: {type(energy_val)!r}")
+
+
 class SummaryTable:
     """Manages the construction of a summary table.
 
@@ -64,18 +139,59 @@ class SummaryTable:
     the file in which we found the best parameters for a given QAOA depth, .
     """
 
-    def __init__(self, filename: str | None = None):
-        """Initialize the summary table instance."""
+    _problem_class: ProblemClass | None
+
+    def __init__(
+        self,
+        filename: str | None = None,
+        problem_class: ProblemClass | None = None,
+    ):
+        """Initialize the summary table instance.
+
+        Args:
+            filename: Filename for the saved summary table, to load preprocessed
+                data.
+            problem_class: List of acceptable problem class strings and/or
+                None. All problem classes, as determined by
+                :fun:`guess_problem_class`, that exist in this list are
+                accepted when adding training data. Single strings are inserted
+                into an empty list. If None, not ``[None]``, then all problem
+                classes are accepted. Defaults to None.
+        """
         self._data: SummaryData = {}
         self._minmax_data: MinMaxData = {}
         self._methods: list[str] = []
+        self._additional_methods: list[str] = []
+        """List of additional methods that may not have a method JSON.
+
+        They are no-opt methods from the zeroth iteration of an opt method."""
+
+        self._problem_class: ProblemClass | None = problem_class
 
         if filename is not None:
             with open(filename, "r") as fin:
                 _data = json.load(fin)
-                self._data = _data["data"]
+                _loaded_data = _data["data"]
+                # Previous versions had Depth:str instead of Depth:int, so we
+                # need to convert them here.
+                self._data = {
+                    _graph_key: {
+                        _trainer_config: {
+                            # This is the only change we need to ensure.
+                            int(_depth): _result
+                            for _depth, _result in _trainer_dict.items()
+                        }
+                        for _trainer_config, _trainer_dict in _graph_dict.items()
+                    }
+                    for _graph_key, _graph_dict in _loaded_data.items()
+                }
+
                 self._minmax_data = _data["minmax_data"]
                 self._methods = _data["methods"]
+
+                # The default is None, where we accept all. This allows us to
+                # handle old saved JSON tables, where all data was included.
+                self._problem_class = _data.get("problem_class", None)
 
     @property
     def data(self) -> SummaryData:
@@ -95,19 +211,106 @@ class SummaryTable:
                 f"Unrecognised energy evaluation for method {trainer_config}"
             )
 
+    def trainer_config_to_method(self, trainer_config: TrainerConfig) -> str:
+        """Convert a trainer config to an evaluation-independent string."""
+        return trainer_config.replace(
+            "_{}".format(self.trainer_config_to_evaluation(trainer_config)), ""
+        )
+
+    def result_contains_noopt(self, result: dict[str, Any]) -> bool:
+        """Returns if the given results dictionary contains a trainer whose zeroth iteration is a _noOpt run.
+
+        This function first checks if the trainer JSON file is a TQA or FA
+        config, then it checks if _opt is in the config JSON filename. If both
+        are true, it returns True. Otherwise, it returns False.
+
+        Args:
+            result: The results dictionary.
+
+        Returns:
+            True if the zeroth iteration is a _noOpt run.
+        """
+        config: str = result["args"]["config"]
+        parts = Path(config).parts[-1].split(".")[0].split("_")
+        no_opt_matches = ["TQA", "FA", "TQAAer"]
+        if all(x not in parts for x in no_opt_matches):
+            return False
+        lower_parts = [p.lower() for p in parts]
+        if "opt" not in lower_parts:
+            return False
+        if "noopt" in lower_parts or "no_opt" in config.lower():
+            return False
+        return True
+
+    def trainer_config_to_no_opt(self, result: dict[str, Any]) -> str:
+        """Return the ``no_opt`` variant of the trainer config filename
+
+        Args:
+            result: The results dictionary for an opt run.
+
+        Returns:
+            Modified trainer config name.
+        """
+        OPT_TO_NO_OPT_MAPPING = {
+            # Known mappings between Opt and No-Opt methods.
+            "FA_MPS_opt.json": "FA_MPS_no_opt.json",
+            "FA_PP_opt.json": "FA_PP_no_opt.json",
+            "FA_SV_opt.json": "FA_SV_noOpt.json",
+            "TQA_MPS_opt.json": "TQA_MPS_no_opt.json",
+            "TQA_PP_opt.json": "TQA_PP_no_opt.json",
+            "TQA_SV_opt.json": "TQA_SV_noOpt.json",
+            # These no-opt methods don't exist, but we give them names anyway.
+            "FA_MPSAer_opt.json": "FA_MPSAer_no_opt.json",
+            "TQA_MPSAer_opt.json": "TQA_MPSAer_no_opt.json",
+        }
+        opt_trainer_config = str(result["args"]["config"])
+        noopt_trainer_config: str | None = None
+        # Check if any opt method exists. If yes, replace it and break.
+        for k in OPT_TO_NO_OPT_MAPPING.keys():
+            if k in opt_trainer_config:
+                noopt_trainer_config = opt_trainer_config.replace(
+                    k, OPT_TO_NO_OPT_MAPPING[k]
+                )
+                break
+        # If we don't have an explicit mapping, just replace 'opt' with 'no_opt'.
+        if noopt_trainer_config is None:
+            noopt_trainer_config = opt_trainer_config.replace("opt", "no_opt")
+        return noopt_trainer_config
+
+    def config_path_to_config(self, config_path: str) -> str:
+        """Convert a string path to a config/method to just the config name."""
+        return config_path.split("/")[-1]
+
     def add_data(self, folder_name: str):
         """Load the training data from a folder and get the best result.
 
         Best results are chosen as the data with minimum energy for each graph
-        key, training method, and QAOA depth."""
+        key, training method, and QAOA depth. If the training data problem_class
+        does not match :attr:`_problem_class`, the data is ignored."""
 
         for filename in glob.glob(f"{folder_name}/*.json"):
             filename = filename.replace("\\", "/")
             with open(filename, "r") as fin:
                 result = json.load(fin)
 
+            # Get the problem class
+            problem_class = guess_problem_class(filename, result)
+            if self._problem_class is not None and problem_class != self._problem_class:
+                # Result problem class not in acceptable problem classes, so we
+                # ignore these results.
+                if problem_class is None:
+                    # We only raise this warning if we aren't filtering by problem class.
+                    warnings.warn(
+                        "Result with filename {!r} has no problem class!".format(
+                            filename
+                        )
+                    )
+                continue
+
             # Get the energy evaluation methodology
-            config: TrainerConfig = result["args"]["config"].split("/")[-1]
+            config: TrainerConfig = self.config_path_to_config(result["args"]["config"])
+
+            # Check if we must translate an opt.json to noOpt.json entry.
 
             try:
                 evaluation = self.trainer_config_to_evaluation(config)
@@ -121,23 +324,44 @@ class SummaryTable:
             graph: GraphKey = graph_input.split("/")[-1]
 
             # Loop over the trainers in the result
-            results = []
-            self.populate_results(result, results, filename=filename)
+            results: list[tuple[list[float], float | None, str, str]] = []
+            self.populate_results(result, results, filename=filename, config=config)
 
             if graph not in self._data:
                 self._data[graph] = dict()
             if config not in self._data[graph]:
                 self._data[graph][config] = dict()
 
-            for qaoa_angles, energy, trainer in results:
+            # Check if we need to add the zeroth iteration, for opt to no-opt
+            # trainer mappings.
+            if self.result_contains_noopt(result):
+                no_opt_config = self.config_path_to_config(
+                    self.trainer_config_to_no_opt(result)
+                )
+                self._additional_methods.append(
+                    self.config_path_to_config(no_opt_config)
+                )
+                self.populate_results(
+                    result,
+                    results,
+                    filename=filename,
+                    config=no_opt_config,
+                    # Only use the zeroth entry.
+                    iter_keys=["0"],
+                )
+                if no_opt_config not in self._data[graph]:
+                    self._data[graph][no_opt_config] = dict()
+
+            for qaoa_angles, energy, trainer, res_config in results:
                 if qaoa_angles is None or energy is None:
                     continue
 
-                depth = str(len(qaoa_angles) // 2)
+                depth = len(qaoa_angles) // 2
 
-                if depth in self._data[graph][config]:
-                    if self._data[graph][config][depth]["energy"] < energy:
-                        self._data[graph][config][depth] = {
+                # Note that depth is stored as a string in the results.
+                if depth in self._data[graph][res_config]:
+                    if self._data[graph][res_config][depth]["energy"] < energy:
+                        self._data[graph][res_config][depth] = {
                             "energy": energy,
                             "qaoa_angles": qaoa_angles,
                             "result_filename": filename.split("/")[-1],
@@ -145,7 +369,7 @@ class SummaryTable:
                             "evaluation": evaluation,
                         }
                 else:
-                    self._data[graph][config][depth] = {
+                    self._data[graph][res_config][depth] = {
                         "energy": energy,
                         "qaoa_angles": qaoa_angles,
                         "result_filename": filename.split("/")[-1],
@@ -162,7 +386,7 @@ class SummaryTable:
         for filename in glob.glob(f"{folder_name}/*.json"):
             filename = filename.replace("\\", "/")
             # Ignore the example json
-            if filename.split("/")[-1] == "example_method.json":
+            if self.config_path_to_config(filename) == "example_method.json":
                 continue
             if filename in self._methods:
                 continue
@@ -179,7 +403,12 @@ class SummaryTable:
                         filename
                     )
                 )
-            self._methods.append(filename.split("/")[-1])
+            self._methods.append(self.config_path_to_config(filename))
+
+    def all_methods(self) -> list[str]:
+        methods = [m for m in self._methods]
+        methods.extend(self._additional_methods)
+        return list(sorted(set(methods)))
 
     def add_minmax_cut_data(self, folder_name: str, replace: bool = False):
         """Load the min-max cut data from a folder.
@@ -193,7 +422,7 @@ class SummaryTable:
             filename = filename.replace("\\", "/")
             with open(filename, "r") as fin:
                 _data = json.load(fin)
-            graph_path = _data.pop("instance")
+            graph_path = sanitize_instance_key(_data.pop("instance"))
             graph_key: GraphKey = graph_path.split("/")[-1]
             result = MinMaxResult(_data)
             if graph_key in self._minmax_data and not replace:
@@ -303,8 +532,13 @@ class SummaryTable:
         return [graph for graph in self._data.keys() if graph not in self._minmax_data]
 
     def populate_results(
-        self, result: dict, result_data: list, filename: str | None = None
-    ) -> list:
+        self,
+        result: dict,
+        result_data: list[tuple[list[float], float | None, str, str]],
+        filename: str | None = None,
+        iter_keys: Iterable[str] | None = None,
+        config: str | None = None,
+    ):
         """Get the parameters from the `result` dict.
 
         Args:
@@ -312,10 +546,21 @@ class SummaryTable:
             result_data: Output list of results.
             filename: Optional name of original JSON file for results, for
             warnings. If None, warnings will not refer to a specific file.
+            iter_keys: Iterable of keys for sub-results. If None, generated with
+            :meth:`get_iter_keys`.
         """
-        iter_keys = self.get_iter_keys(result.keys())
+        if iter_keys:
+            __iter_keys = self.get_iter_keys(iter_keys)
+        else:
+            __iter_keys = self.get_iter_keys(result.keys())
 
-        for key in iter_keys:
+        if config is None:
+            __config = result.get("args", {}).get("config", None)
+            if __config is None:
+                raise ValueError("Cannot determine config.")
+            config = self.config_path_to_config(__config)
+
+        for key in __iter_keys:
             sub_result = result[key]
 
             version = sub_result["system_info"]["qaoa_training_pipeline_version"]
@@ -335,16 +580,18 @@ class SummaryTable:
                     )
 
             if trainer == "RecursionTrainer":
-                self.populate_results(sub_result, result_data, filename=filename)
+                self.populate_results(
+                    sub_result, result_data, filename=filename, config=config
+                )
 
             qaoa_angles = sub_result["optimized_qaoa_angles"]
-            energy = sub_result["energy"]
+            energy = sanitize_energy(energy_val=sub_result["energy"])
 
             # Ensure length of 2p
             if len(qaoa_angles) % 2 != 0:
                 continue
 
-            result_data.append((qaoa_angles, energy, trainer))
+            result_data.append((qaoa_angles, energy, trainer, config))
 
     def save_data(self, filename: str, overwrite: bool = False):
         """Dump the data to a file."""
@@ -358,6 +605,7 @@ class SummaryTable:
                     "data": self._data,
                     "minmax_data": self._minmax_data,
                     "methods": self._methods,
+                    "problem_class": self._problem_class,
                 },
                 fout,
             )
@@ -376,7 +624,7 @@ class SummaryTable:
                 if trainer_config not in monotonic_data[graph_key]:
                     monotonic_data[graph_key][trainer_config] = dict()
 
-                depths = [str(v) for v in sorted([int(d) for d in vdict.keys()])]
+                depths = [v for v in sorted([int(d) for d in vdict.keys()])]
 
                 prev_energy: float | None = None
                 for depth in depths:
@@ -410,6 +658,7 @@ class SummaryTable:
             "graph_idx": Instance.graph_idx(graph_key),
             "num_nodes": Instance.num_nodes(graph_key),
             "trainer_config": config,
+            "method": self.trainer_config_to_method(config),
             "depth": depth,
             # We now put other _key_ information that is dependent on the graph type.
             "edge_probability": Instance.edge_probability(graph_key),
