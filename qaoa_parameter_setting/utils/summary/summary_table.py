@@ -8,21 +8,22 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Literal, NoReturn, TypeAlias, TypedDict, overload
 import warnings
 
+from .constants import METHOD_CONFIG_TO_LABELS
 import numpy as np
 import pandas as pd
 
 from qaoa_parameter_setting.utils.graph_utils import maxcut_approximation_ratio
 import qaoa_parameter_setting.utils.instance as Instance
 
-# *** type aliases to make _data type hints easier.
-GraphKey: TypeAlias = str
-"""GraphKey instance filename."""
-TrainerConfig: TypeAlias = str
-"""Config filename for trainer."""
-Depth: TypeAlias = int
-"""Depth of QAOA."""
-ProblemClass: TypeAlias = Literal["MC", "MIS"]
-"""Optimization problem class."""
+from .utils import (
+    GraphKey,
+    Depth,
+    ProblemClass,
+    MethodConfigJSON,
+    MethodJSON,
+    MethodAcronym,
+    guess_problem_class,
+)
 
 
 class ResultDict(TypedDict):
@@ -35,7 +36,7 @@ class ResultDict(TypedDict):
     evaluation: str
 
 
-SummaryData: TypeAlias = dict[GraphKey, dict[TrainerConfig, dict[Depth, ResultDict]]]
+SummaryData: TypeAlias = dict[GraphKey, dict[MethodConfigJSON, dict[Depth, ResultDict]]]
 """TypeAlias for :class:`SummaryTable` internal data type hinting."""
 
 
@@ -72,34 +73,6 @@ def sanitize_instance_key(key: str) -> str:
         return str(PurePosixPath(PureWindowsPath(key)))
     # Cannot determine path type, so we try with the current system Path type.
     return str(PurePosixPath(Path(key)))
-
-
-def guess_problem_class(
-    result_filename: str,
-    result: dict[str, Any] | None = None,
-) -> ProblemClass | None:
-    """Guess the problem class from a filename and optional results dictionary.
-
-    Args:
-        result_filename: Filename for the results JSON.
-        result: Optional results dictionary as the parsed JSON data. If
-            provided, then problem class is determined from the results. If not
-            provided, only the filename is used. Defaults to None.
-
-    Returns:
-        The guessed problem class, or None if no class could be determined.
-    """
-    # If we have a results dictionary, use that.
-    if result is not None:
-        _class = result.get("args", {}).get("problem_class", None)
-        if _class is not None:
-            return _class
-
-    if "_MC_" in result_filename:
-        return "MC"
-    elif "_MIS_" in result_filename:
-        return "MIS"
-    return None
 
 
 def sanitize_energy(energy_val: float | None | Literal["NA"]) -> float | None:
@@ -161,10 +134,12 @@ class SummaryTable:
         self._data: SummaryData = {}
         self._minmax_data: MinMaxData = {}
         self._methods: list[str] = []
-        self._additional_methods: list[str] = []
-        """List of additional methods that may not have a method JSON.
+        self._additional_methods: set[str] = set()
+        """Set of additional methods that may not have a method JSON.
 
-        They are no-opt methods from the zeroth iteration of an opt method."""
+        The set consists of methods from training data where a method JSON is not known and no-opt
+        methods from the zeroth iteration of an opt method.
+        """
 
         self._problem_class: ProblemClass | None = problem_class
 
@@ -188,17 +163,23 @@ class SummaryTable:
 
                 self._minmax_data = _data["minmax_data"]
                 self._methods = _data["methods"]
+                self._additional_methods = set(_data["additional_methods"])
 
                 # The default is None, where we accept all. This allows us to
                 # handle old saved JSON tables, where all data was included.
                 self._problem_class = _data.get("problem_class", None)
 
     @property
+    def problem_class(self) -> ProblemClass | None:
+        """Return the problem class of the summary table."""
+        return self._problem_class
+
+    @property
     def data(self) -> SummaryData:
         """Return the data."""
         return self._data
 
-    def trainer_config_to_evaluation(self, trainer_config: TrainerConfig) -> str:
+    def trainer_config_to_evaluation(self, trainer_config: MethodConfigJSON) -> str:
         """Convert a trainer config to an abbreviation of the evaluation method."""
         if "PP" in trainer_config:
             return "PP"
@@ -211,11 +192,17 @@ class SummaryTable:
                 f"Unrecognised energy evaluation for method {trainer_config}"
             )
 
-    def trainer_config_to_method(self, trainer_config: TrainerConfig) -> str:
+    def trainer_config_to_method(self, trainer_config: MethodConfigJSON) -> MethodJSON:
         """Convert a trainer config to an evaluation-independent string."""
-        return trainer_config.replace(
-            "_{}".format(self.trainer_config_to_evaluation(trainer_config)), ""
+        return MethodJSON(
+            trainer_config.replace(
+                "_{}".format(self.trainer_config_to_evaluation(trainer_config)), ""
+            )
         )
+
+    def method_uses_aer(self, method_config: str) -> bool:
+        """Return if the given method_config uses AER."""
+        return "Aer" in method_config
 
     def result_contains_noopt(self, result: dict[str, Any]) -> bool:
         """Returns if the given results dictionary contains a trainer whose zeroth iteration is a _noOpt run.
@@ -232,7 +219,7 @@ class SummaryTable:
         """
         config: str = result["args"]["config"]
         parts = Path(config).parts[-1].split(".")[0].split("_")
-        no_opt_matches = ["TQA", "FA", "TQAAer"]
+        no_opt_matches = ["TQA", "FA", "FAAer", "TQAAer"]
         if all(x not in parts for x in no_opt_matches):
             return False
         lower_parts = [p.lower() for p in parts]
@@ -277,9 +264,9 @@ class SummaryTable:
             noopt_trainer_config = opt_trainer_config.replace("opt", "no_opt")
         return noopt_trainer_config
 
-    def config_path_to_config(self, config_path: str) -> str:
+    def config_path_to_config(self, config_path: str) -> MethodConfigJSON:
         """Convert a string path to a config/method to just the config name."""
-        return config_path.split("/")[-1]
+        return MethodConfigJSON(config_path.split("/")[-1])
 
     def add_data(self, folder_name: str):
         """Load the training data from a folder and get the best result.
@@ -308,7 +295,9 @@ class SummaryTable:
                 continue
 
             # Get the energy evaluation methodology
-            config: TrainerConfig = self.config_path_to_config(result["args"]["config"])
+            config: MethodConfigJSON = self.config_path_to_config(
+                result["args"]["config"]
+            )
 
             # Check if we must translate an opt.json to noOpt.json entry.
 
@@ -324,7 +313,7 @@ class SummaryTable:
             graph: GraphKey = graph_input.split("/")[-1]
 
             # Loop over the trainers in the result
-            results: list[tuple[list[float], float | None, str, str]] = []
+            results: list[tuple[list[float], float | None, str, MethodConfigJSON]] = []
             self.populate_results(result, results, filename=filename, config=config)
 
             if graph not in self._data:
@@ -332,15 +321,18 @@ class SummaryTable:
             if config not in self._data[graph]:
                 self._data[graph][config] = dict()
 
+            # Track this config in additional_methods if it's not in methods
+            # This ensures configs with data but no method JSON file are included
+            if config not in self._methods and config not in self._additional_methods:
+                self._additional_methods.add(config)
+
             # Check if we need to add the zeroth iteration, for opt to no-opt
             # trainer mappings.
             if self.result_contains_noopt(result):
                 no_opt_config = self.config_path_to_config(
                     self.trainer_config_to_no_opt(result)
                 )
-                self._additional_methods.append(
-                    self.config_path_to_config(no_opt_config)
-                )
+                self._additional_methods.add(self.config_path_to_config(no_opt_config))
                 self.populate_results(
                     result,
                     results,
@@ -352,7 +344,9 @@ class SummaryTable:
                 if no_opt_config not in self._data[graph]:
                     self._data[graph][no_opt_config] = dict()
 
+            res_config: MethodConfigJSON
             for qaoa_angles, energy, trainer, res_config in results:
+                # res_config is MethodConfigJSON from populate_results
                 if qaoa_angles is None or energy is None:
                     continue
 
@@ -405,10 +399,10 @@ class SummaryTable:
                 )
             self._methods.append(self.config_path_to_config(filename))
 
-    def all_methods(self) -> list[str]:
+    def all_methods(self) -> list[MethodConfigJSON]:
         methods = [m for m in self._methods]
         methods.extend(self._additional_methods)
-        return list(sorted(set(methods)))
+        return [MethodConfigJSON(m) for m in sorted(set(methods))]
 
     def add_minmax_cut_data(self, folder_name: str, replace: bool = False):
         """Load the min-max cut data from a folder.
@@ -533,11 +527,11 @@ class SummaryTable:
 
     def populate_results(
         self,
-        result: dict,
-        result_data: list[tuple[list[float], float | None, str, str]],
+        result: dict[str, Any],
+        result_data: list[tuple[list[float], float | None, str, MethodConfigJSON]],
         filename: str | None = None,
         iter_keys: Iterable[str] | None = None,
-        config: str | None = None,
+        config: MethodConfigJSON | None = None,
     ):
         """Get the parameters from the `result` dict.
 
@@ -606,6 +600,7 @@ class SummaryTable:
                     "minmax_data": self._minmax_data,
                     "methods": self._methods,
                     "problem_class": self._problem_class,
+                    "additional_methods": list(self._additional_methods),
                 },
                 fout,
             )
@@ -643,7 +638,7 @@ class SummaryTable:
     def __result_to_record(
         self,
         graph_key: GraphKey,
-        config: TrainerConfig,
+        config: MethodConfigJSON,
         depth: Depth,
         result: ResultDict,
     ) -> dict[str, Any]:
@@ -651,6 +646,18 @@ class SummaryTable:
         _approx_ratio = self.maxcut_approximation_ratio(
             graph_key=graph_key, energy=result["energy"], return_none=True
         )
+
+        # Compute normalized energy for MIS problems
+        _num_nodes = Instance.num_nodes(graph_key)
+        _energy = result["energy"]
+        _normalized_energy = (
+            _energy / _num_nodes
+            if _num_nodes is not None and self._problem_class == "MIS"
+            else None
+        )
+
+        _method = self.trainer_config_to_method(config)
+
         return {
             # Pandas will put the first keys as the first columns, so we put the
             # important columns first.
@@ -658,8 +665,10 @@ class SummaryTable:
             "graph_idx": Instance.graph_idx(graph_key),
             "num_nodes": Instance.num_nodes(graph_key),
             "trainer_config": config,
-            "method": self.trainer_config_to_method(config),
+            "method": _method,
+            "method_label": METHOD_CONFIG_TO_LABELS[_method],
             "depth": depth,
+            "uses_aer": self.method_uses_aer(_method),
             # We now put other _key_ information that is dependent on the graph type.
             "edge_probability": Instance.edge_probability(graph_key),
             "regular_degree": Instance.regular_degree(graph_key),
@@ -677,6 +686,8 @@ class SummaryTable:
             "approximation_ratio": (
                 _approx_ratio if _approx_ratio is not None else None
             ),
+            "energy": _energy,
+            "normalized_energy": _normalized_energy,
         }
 
     def to_dataframe(self) -> pd.DataFrame:
@@ -698,3 +709,343 @@ class SummaryTable:
             "heavy_hex": "HH",
             "line_to_full": "L2F",
         }
+
+    def get_graph_instances_for_config(
+        self,
+        trainer_method: MethodJSON,
+        graph_type: str | None = None,
+        depth: Depth | None = None,
+        evaluation_method: str | None = None,
+    ) -> set[GraphKey]:
+        """Get all graph instances for a given trainer config.
+
+        Args:
+            trainer_method: The trainer method to query (e.g., "LR_opt.json").
+            graph_type: Optional graph type filter (e.g., "random_regular", "erdos_renyi").
+                If None, all graph types are included.
+            depth: Optional depth filter. If None, all depths are included.
+            evaluation_method: Optional evaluation method filter (e.g., "SV", "MPS", "PP").
+                If None, all evaluation methods are included.
+
+        Returns:
+            Set of graph keys (instance filenames) that have results for the given
+            trainer method, optionally filtered by graph type, depth, and evaluation method.
+        """
+        instances: set[GraphKey] = set()
+
+        for graph_key, graph_data in self._data.items():
+            # Filter by graph type if specified
+            if graph_type is not None:
+                if Instance.graph_type(graph_key) != graph_type:
+                    continue
+
+            # Check if this trainer config exists for this graph. The trainer configs in graph_data
+            # must be mapped to methods, but we need the trainer config to index the graph data
+            # later. Also filter by evaluation method if specified.
+            trainer_config: MethodConfigJSON | None = None
+            for __trainer_config in graph_data.keys():
+                __current_method = self.trainer_config_to_method(__trainer_config)
+                if trainer_method == __current_method:
+                    # If evaluation_method is specified, check if it matches
+                    if evaluation_method is not None:
+                        __current_eval = self.trainer_config_to_evaluation(
+                            __trainer_config
+                        )
+                        if __current_eval != evaluation_method:
+                            continue
+                    trainer_config = __trainer_config
+                    break
+            if trainer_config is None:
+                continue
+
+            # Filter by depth if specified
+            if depth is not None:
+                if depth not in graph_data[trainer_config]:
+                    continue
+
+            instances.add(graph_key)
+
+        return instances
+
+    def filter_to_common_instances(
+        self,
+        reference_methods: dict[tuple[str, str], MethodJSON],
+        depth: Depth | None = None,
+    ) -> "SummaryTable":
+        """Filter data to only include graph instances common to reference configs.
+
+        For each (evaluation_method, graph_type) pair, this method identifies the
+        graph instances present in the reference training method and filters all
+        other training methods for that (evaluation_method, graph_type) to only
+        include those same instances.
+
+        Args:
+            reference_methods: Dictionary mapping (evaluation_method, graph_type)
+                tuples to reference trainer config names. For example:
+                {("SV", "random_regular"): "F_SV.json", ("MPS", "heavy_hex"): "I_MPS.json"}
+            depth: Optional depth to filter on. If None, filtering is done across
+                all depths.
+
+        Returns:
+            A new SummaryTable instance with filtered data.
+        """
+        # Create a new SummaryTable with the same metadata
+        filtered_table = SummaryTable(problem_class=self._problem_class)
+        filtered_table._methods = self._methods.copy()
+        filtered_table._additional_methods = self._additional_methods.copy()
+        filtered_table._minmax_data = self._minmax_data.copy()
+
+        # Build a mapping of (evaluation, graph_type) -> set of allowed instances
+        allowed_instances: dict[tuple[str, str], set[GraphKey]] = {}
+
+        for (eval_method, graph_type), ref_method in reference_methods.items():
+            instances = self.get_graph_instances_for_config(
+                trainer_method=ref_method,
+                graph_type=graph_type,
+                depth=depth,
+                evaluation_method=eval_method,
+            )
+            allowed_instances[(eval_method, graph_type)] = instances
+
+        # Filter the data
+        for graph_key, graph_data in self._data.items():
+            current_graph_type = Instance.graph_type(graph_key)
+
+            for trainer_config, config_data in graph_data.items():
+                eval_method = self.trainer_config_to_evaluation(trainer_config)
+
+                # Check if we have a reference config for this (eval, graph_type)
+                key = (eval_method, current_graph_type)
+                if key not in allowed_instances or graph_key in allowed_instances[key]:
+                    # No filtering for this combination if key is not in allowed instances, or if
+                    # this graph instance is in the allowed set.
+                    if graph_key not in filtered_table._data:
+                        filtered_table._data[graph_key] = {}
+                    filtered_table._data[graph_key][trainer_config] = config_data.copy()
+
+        return filtered_table
+
+    def get_missing_instances_after_filter(
+        self,
+        reference_methods: dict[tuple[str, str], str],
+        depth: Depth | None = None,
+        num_nodes: int | list[int] | dict[str, int | list[int]] | None = None,
+        methods_to_exclude: list[str] | None = None,
+    ) -> dict[tuple[str, str, str], set[GraphKey]]:
+        """Identify missing graph instances for each (eval_method, graph_type, trainer_method).
+
+        After filtering to common instances based on reference methods, this identifies
+        which graph instances are missing for each training method. This is useful for
+        determining which experiments need to be run to complete the dataset.
+
+        Args:
+            reference_methods: Dictionary mapping (evaluation_method, graph_type)
+                tuples to reference trainer method names (without evaluation suffix).
+                For example: {("SV", "line_to_full"): "LR_opt.json"}
+                The evaluation method from the key will be used to find the right config.
+            depth: Optional depth to filter on. If None, checks across all depths.
+            num_nodes: Optional filter for number of nodes. Can be:
+                - int: Only include instances with this number of nodes
+                - list[int]: Include instances with any of these numbers of nodes
+                - dict[str, int | list[int]]: Per-evaluation method filtering
+            methods_to_exclude: Optional list of methods to exclude when compiling list of missing
+                instances. If None, all methods are included. Defaults to None.
+
+        Returns:
+            Dictionary mapping (eval_method, graph_type, trainer_method) tuples to sets
+            of missing graph keys. Only includes entries where instances are missing.
+
+        Example:
+            >>> missing = table.get_missing_instances_after_filter(
+            ...     {("SV", "line_to_full"): "LR_opt.json"},
+            ...     depth=10
+            ... )
+            >>> # Returns: {("SV", "line_to_full", "FA"): {"000N40L2S8.json", ...}}
+        """
+        if methods_to_exclude is None:
+            methods_to_exclude = []
+
+        # Build mapping of (eval, graph_type) -> set of reference instances
+        reference_instances: dict[tuple[str, str], set[GraphKey]] = {}
+
+        for (eval_method, graph_type), ref_method in reference_methods.items():
+            instances = self.get_graph_instances_for_config(
+                trainer_method=MethodJSON(ref_method),
+                graph_type=graph_type,
+                depth=depth,
+                evaluation_method=eval_method,
+            )
+
+            # Apply num_nodes filtering
+            if num_nodes is not None:
+                filtered_instances = set()
+                for graph_key in instances:
+                    graph_num_nodes = Instance.num_nodes(graph_key)
+                    if graph_num_nodes is None:
+                        continue
+
+                    # Check if this instance should be included based on num_nodes filter
+                    if isinstance(num_nodes, dict):
+                        # Per-evaluation filtering
+                        if eval_method not in num_nodes:
+                            # No filter for this evaluation method, include all
+                            filtered_instances.add(graph_key)
+                        else:
+                            allowed = num_nodes[eval_method]
+                            if isinstance(allowed, int):
+                                allowed = [allowed]
+                            if graph_num_nodes in allowed:
+                                filtered_instances.add(graph_key)
+                    else:
+                        # Global filtering
+                        allowed_nodes = (
+                            [num_nodes] if isinstance(num_nodes, int) else num_nodes
+                        )
+                        if graph_num_nodes in allowed_nodes:
+                            filtered_instances.add(graph_key)
+
+                instances = filtered_instances
+
+            reference_instances[(eval_method, graph_type)] = instances
+
+        # Find missing instances for each method
+        missing: dict[tuple[str, str, str], set[GraphKey]] = {}
+
+        # For each (eval, graph_type) pair with a reference
+        for (
+            eval_method,
+            graph_type,
+        ), expected_instances in reference_instances.items():
+            # Get trainer methods that actually have data for this specific (eval_method, graph_type)
+            # This ensures we only check methods that are compatible with the evaluation method
+            relevant_trainer_methods = set()
+
+            for graph_key, graph_data in self._data.items():
+                # Extract trainer methods from configs that match this evaluation method
+                for trainer_config in graph_data.keys():
+                    try:
+                        config_eval = self.trainer_config_to_evaluation(trainer_config)
+                        # Only include if evaluation method matches
+                        if config_eval == eval_method:
+                            trainer_method = self.trainer_config_to_method(
+                                trainer_config
+                            )
+                            # If this trainer method should be excluded, do not process it.
+                            if trainer_method in methods_to_exclude:
+                                continue
+                            relevant_trainer_methods.add(trainer_method)
+                    except ValueError:
+                        # Skip configs with unrecognized evaluation methods
+                        continue
+
+            # Check each relevant trainer method
+            for trainer_method in relevant_trainer_methods:
+                # Get instances this method actually has
+                actual_instances = self.get_graph_instances_for_config(
+                    trainer_method=trainer_method,
+                    graph_type=graph_type,
+                    depth=depth,
+                    evaluation_method=eval_method,
+                )
+
+                # Apply num_nodes filtering to actual instances
+                if num_nodes is not None:
+                    filtered_actual = set()
+                    for graph_key in actual_instances:
+                        graph_num_nodes = Instance.num_nodes(graph_key)
+                        if graph_num_nodes is None:
+                            continue
+
+                        if isinstance(num_nodes, dict):
+                            if eval_method not in num_nodes:
+                                filtered_actual.add(graph_key)
+                            else:
+                                allowed = num_nodes[eval_method]
+                                if isinstance(allowed, int):
+                                    allowed = [allowed]
+                                if graph_num_nodes in allowed:
+                                    filtered_actual.add(graph_key)
+                        else:
+                            allowed_nodes = (
+                                [num_nodes] if isinstance(num_nodes, int) else num_nodes
+                            )
+                            if graph_num_nodes in allowed_nodes:
+                                filtered_actual.add(graph_key)
+
+                    actual_instances = filtered_actual
+
+                # Find missing instances
+                missing_instances = expected_instances - actual_instances
+
+                # Only include if there are missing instances
+                if missing_instances:
+                    key = (eval_method, graph_type, trainer_method)
+                    missing[key] = missing_instances
+
+        return missing
+
+    def get_missing_instances_summary(
+        self,
+        reference_methods: dict[tuple[str, str], str],
+        depth: Depth | None = None,
+        num_nodes: int | list[int] | dict[str, int | list[int]] | None = None,
+        methods_to_exclude: list[str] | None = None,
+    ) -> pd.DataFrame:
+        """Get a summary DataFrame of missing instances after filtering.
+
+        This provides a human-readable summary of which experiments need to be run,
+        organized by evaluation method, graph type, and trainer method.
+
+        Args:
+            reference_methods: Dictionary mapping (evaluation_method, graph_type)
+                tuples to reference trainer method names (without evaluation suffix).
+                For example: {("SV", "line_to_full"): "LR_opt.json"}
+            depth: Optional depth to filter on. If None, checks across all depths.
+            num_nodes: Optional filter for number of nodes. Can be:
+                - int: Only include instances with this number of nodes
+                - list[int]: Include instances with any of these numbers of nodes
+                - dict[str, int | list[int]]: Per-evaluation method filtering
+            methods_to_exclude: Optional list of methods to exclude when getting the missing
+                instances. These methods will be ignored when compiling the list of instances to
+                run. If None, no methods are excluded.
+
+        Returns:
+            DataFrame with columns: eval_method, graph_type, trainer_method,
+            num_missing, missing_instances (list of graph keys).
+
+        Example:
+            >>> summary = table.get_missing_instances_summary(
+            ...     {("SV", "random_regular"): "TQA_SV_opt"},
+            ...     num_nodes=40
+            ... )
+            >>> print(summary)
+        """
+        if methods_to_exclude is None:
+            methods_to_exclude = []
+        missing = self.get_missing_instances_after_filter(
+            reference_methods=reference_methods,
+            depth=depth,
+            num_nodes=num_nodes,
+            methods_to_exclude=methods_to_exclude,
+        )
+
+        records = []
+        for (eval_method, graph_type, trainer_method), instances in missing.items():
+            records.append(
+                {
+                    "eval_method": eval_method,
+                    "graph_type": graph_type,
+                    "trainer_method": trainer_method,
+                    "num_missing": len(instances),
+                    "missing_instances": sorted(list(instances)),
+                }
+            )
+
+        df = pd.DataFrame.from_records(records)
+        if not df.empty:
+            df = df.sort_values(
+                ["eval_method", "graph_type", "num_missing", "trainer_method"],
+                ascending=[True, True, False, True],
+            )
+
+        return df
