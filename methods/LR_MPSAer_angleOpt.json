@@ -1,0 +1,28 @@
+{
+    "trainer_chain": [
+        {
+            "trainer": "TQATrainer",
+            "trainer_init": {
+                "evaluator": "MPSAerEvaluator",
+                "evaluator_init":  {"mps_init_args":{"matrix_product_state_max_bond_dimension": 32}},
+                "initial_dt":[0.5, 0.5]
+            },
+            
+            "train_kwargs": {"reps":10}
+        },
+        {
+            "trainer": "ScipyTrainer",
+            "trainer_init": {
+                "evaluator": "MPSAerEvaluator",
+                "evaluator_init":  {"mps_init_args":{"matrix_product_state_max_bond_dimension": 32}},
+                "minimize_args": {"options": {"maxiter": 100, "rhobeg": 0.2}}
+            },
+            "train_kwargs": {
+                "result": {
+                    "optimized_qaoa_angles": "params0"
+                }
+            }
+        }
+    ],
+    "description": "optimized TQATrainer with MPSEvaluator"
+}
