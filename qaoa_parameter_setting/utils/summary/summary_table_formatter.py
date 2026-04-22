@@ -1,19 +1,57 @@
 """Code to format a Pandas table generated from SummaryTable."""
 
-import re
 from abc import abstractmethod
 from collections.abc import Callable
 from functools import partial
-from itertools import product
-from typing import Any, Hashable, Literal, TypeVar
+import re
+from typing import Any, Literal, TypeAlias, TypeVar
 
-import numpy as np
 import pandas as pd
 from pandas.io.formats.style import Styler, _background_gradient
 
+from .constants import METHOD_OPTMARKER_PLACEHOLDER
 from qaoa_parameter_setting.utils.summary.summary_table import SummaryTable
+from qaoa_parameter_setting.utils.summary.utils import MethodJSON
+
+ColorMapping: TypeAlias = (
+    str
+    | dict[str, str]
+    | dict[tuple[str | None, str], str]
+    | dict[tuple[str, str], str]
+    | dict[tuple[None, str], str]
+    | None
+)
+"""A single colormap specification.
+
+Can be:
+- A string: a single matplotlib colormap name applied to all evaluations and fields.
+- A ``dict[str, str]``: maps evaluation method names (e.g. ``"MPS"``, ``"PP"``, ``"SV"``)
+  to colormap names.
+- A ``dict[tuple[str | None, str], str]`` or ``dict[tuple[str, str], str]``: maps
+  ``(evaluation, field)`` tuples to colormap names, where ``evaluation`` is the
+  evaluation method string (or ``None`` for all) and ``field`` is one of
+  ``"approximation_ratio"``, ``"num_instances"``, or ``"energy"``.
+- ``None``: no background colours are applied.
+
+All entries within a single :data:`ColorMapping` share the same min/max range per metric.
+"""
 
 __slots__ = ["formatted_styler_for", "convert_evaluation_to_multicolumn_latex"]
+
+
+def upgrade_label_to_latex(
+    label: str,
+    target_format: Literal["text", "latex", "siunitx"],
+    optimized_marker: str,
+) -> str:
+    # Replace the placeholder with the actual optimized marker for all formats
+    label = label.replace(METHOD_OPTMARKER_PLACEHOLDER, optimized_marker)
+
+    # Apply LaTeX-specific formatting
+    if target_format == "latex" or target_format == "siunitx":
+        label = label.replace("†", "$^\\dagger$")
+
+    return label
 
 
 def __rename_index(obj, rename_func: Callable[[str], str]):
@@ -77,67 +115,6 @@ def wrap_latex_maths(val: str) -> str:
 def unwrap_latex_maths(val: str) -> str:
     """Remove LaTeX maths delimiters from the ends of val."""
     return val.removeprefix("$").removesuffix("$")
-
-
-def format_method_name(
-    method_name: str,
-    acronym_mapping: dict[str, str],
-    optimized_marker: str = "*",
-) -> str:
-    """Format a method name using acronym mapping and optimization detection.
-
-    Method names follow the pattern: ACRONYM[_PART]*[_opt|_noOpt|_no_opt]
-    where ACRONYM is mapped to a phrase, and optimization status is indicated
-    by a marker (default: asterisk).
-
-    Args:
-        method_name: The method name to format (e.g., "FA_MPS_opt", "TQA_PP_no_opt")
-        acronym_mapping: Dictionary mapping acronyms to human-readable phrases
-        optimized_marker: String to append for optimized methods. Defaults to "*".
-
-    Returns:
-        Formatted method name with phrase and optional optimization marker.
-
-    Examples:
-        >>> format_method_name("FA_MPS_opt", {"FA": "Fixed Angle"})
-        "Fixed Angle*"
-        >>> format_method_name("TQA_PP_no_opt", {"TQA": "TQA"})
-        "TQA"
-        >>> format_method_name("I_SV", {"I": "Interp"})
-        "Interp"
-    """
-    # Split the method name by underscores
-    parts = method_name.split("_")
-
-    # The first part is the acronym
-    if not parts:
-        return method_name
-
-    acronym = parts[0]
-
-    # Get the phrase from the mapping, or use the acronym if not found
-    phrase = acronym_mapping.get(acronym, acronym)
-
-    # Check for optimization status in the remaining parts
-    # Methods with "opt" (but not "noOpt" or "no_opt") are optimized
-    # Methods without any opt-related suffix are unoptimized
-    is_optimized = False
-
-    # Join remaining parts to check for optimization patterns
-    remaining = "_".join(parts[1:]).lower() if len(parts) > 1 else ""
-
-    # Check if "opt" appears but not as part of "noopt" or "no_opt"
-    if "opt" in remaining:
-        # Check if it's explicitly marked as not optimized
-        if "noopt" not in remaining and "no_opt" not in remaining:
-            is_optimized = True
-
-    # Build the result
-    result = phrase
-    if is_optimized:
-        result += optimized_marker
-
-    return result
 
 
 class AggregatorFormatter:
@@ -218,10 +195,9 @@ class AggregatorFormatter:
             _start, _end = unwrap_latex_maths(val).split("--")
             return (float(_start), float(_end))
         else:
-            import re
-
             pattern = re.compile(r".*{([\d\.]+)}{([\d\.]+)}")
             match = pattern.search(val)
+            assert match is not None
             return (float(match.group(1)), float(match.group(2)))
 
     def _format_num(self, val: float | int) -> str:
@@ -257,10 +233,9 @@ class AggregatorFormatter:
                 return float(unwrap_latex_maths(val))
             return int(unwrap_latex_maths(val))
         else:
-            import re
-
             pattern = re.compile(r".*{([\d\.]+)}")
             match = pattern.search(val)
+            assert match is not None
             _arg = match.group(1)
             return float(_arg)
 
@@ -301,10 +276,9 @@ class AggregatorFormatter:
             _val, _uncertainty = unwrap_latex_maths(val).split(r"\pm ")
             return (float(_val), float(_uncertainty))
         else:
-            import re
-
             pattern = re.compile(r".*{([\d\.]+)\+-([\d\.]+)}")
             match = pattern.search(val)
+            assert match is not None
             _mean = match.group(1)
             _uncertainty = match.group(2)
             return (float(_mean), float(_uncertainty))
@@ -423,48 +397,99 @@ def _unformatted_background_gradient(
 
 def formatted_styler_for(
     table: SummaryTable,
-    agg_values: Literal["approximation_ratio", "num_instances"]
-    | list[Literal["approximation_ratio", "num_instances"]],
+    agg_values: Literal["approximation_ratio", "num_instances", "energy"]
+    | list[Literal["approximation_ratio", "num_instances", "energy"]],
     depths: int | list[int] | None = None,
-    num_nodes: int | list[int] | None = None,
+    num_nodes: int | list[int] | dict[str, int | list[int]] | None = None,
     with_fancy_values: bool = False,
-    cmap: str | dict[str, str] | dict[tuple[str | None, str], str] | None = "Greens",
+    cmap: ColorMapping | list[ColorMapping] = "Greens",
     target_format: Literal["text", "latex", "siunitx"] = "text",
     precision: int
-    | dict[Literal["approximation_ratio", "num_instances"], int]
+    | dict[Literal["approximation_ratio", "num_instances", "energy"], int]
     | None = None,
     missing_data_str: str = "-",
     show_empty_rows: bool = True,
-    acronym_mapping: dict[str, str] | None = None,
     optimized_marker: str | None = None,
     exclude_methods: list[str] | None = None,
+    restrict_mps_to_aer: bool = False,
+    reference_methods: dict[tuple[str, str], MethodJSON] | None = None,
 ) -> tuple[pd.DataFrame, Styler, dict[str, tuple[float, float]]]:
     """Format a dataframe as a pivot table with appropriate styling.
 
     Args:
         table: The :class:`SummaryTable` instance whose data should be formatted.
         agg_values: Values to aggregate. Can be a single value or a list of values.
+            Options are "approximation_ratio", "num_instances", or "energy".
         depths: Depths to show in the data. Results for different depths will
             not be aggregated. If None, all depths will be shown. Defaults to None.
         num_nodes: Graph sizes to show in the data. Results for different sizes
             will not be aggregated. If None, all graph sizes will be shown.
+            If an ``int`` or ``list[int]``, only rows whose ``num_nodes`` value
+            is in the given set are kept (across all evaluation methods).
+            If a ``dict[str, int | list[int]]``, the keys are evaluation method
+            names (e.g. ``"MPS"``, ``"PP"``, ``"SV"``) and the values specify
+            which graph sizes to keep **for that evaluation method only**.
+            Evaluation methods not present as keys are not filtered by
+            ``num_nodes``.  Example::
+
+                num_nodes = {"MPS": 100, "PP": 100, "SV": 20}
+
             Defaults to None.
         with_fancy_values: Whether aggregate values should show additional
             information, e.g., standard deviation for
-            ``agg_values="approximation_ratio"``. Defaults to False.
-        cmap: The matplotlib colormap to use for cell colours. Defaults to
-            "Greens". If a dictionary, the keys can be either:
-            - Evaluation method strings (old format, for backward compatibility)
-            - Tuples of (evaluation, field) where evaluation is the evaluation
-              method string (or None for all) and field is either
-              "approximation_ratio" or "num_instances" (new format for multiple values)
-            Values are cmaps to be applied to the specified evaluation (and field).
-            If None, backgrounds are left blank.
+            ``agg_values="approximation_ratio"`` or ``agg_values="energy"``. Defaults to False.
+        cmap: The matplotlib colormap(s) to use for cell background colours.
+            Defaults to ``"Greens"``.
+
+            A single :data:`ColorMapping` or a list of :data:`ColorMapping` instances
+            may be provided.  If a single :data:`ColorMapping` is given it is
+            automatically wrapped in a list.
+
+            Each :data:`ColorMapping` in the list is processed **independently**:
+            the min/max values used to scale the colour range are computed
+            separately for each :data:`ColorMapping` (per metric).  This means
+            that two :data:`ColorMapping` instances never share their colour
+            range.
+
+            A :data:`ColorMapping` can be:
+
+            - A **string** – a single matplotlib colormap name applied to all
+              evaluation methods and all requested metrics.
+            - A **dict[str, str]** – maps evaluation method names (e.g.
+              ``"MPS"``, ``"PP"``, ``"SV"``) to colormap names.  All entries
+              share the same min/max range (per metric).
+            - A **dict[tuple[str | None, str], str]** – maps
+              ``(evaluation, field)`` tuples to colormap names, where
+              *evaluation* is the evaluation method string (or ``None`` for
+              all methods) and *field* is one of ``"approximation_ratio"``,
+              ``"num_instances"``, or ``"energy"``.  All entries share the
+              same min/max range (per metric).
+            - ``None`` – no background colours are applied for this entry.
+
+            **Examples**::
+
+                # All evaluations coloured green, shared min/max per metric.
+                cmap = "Greens"
+
+                # Different colormaps per evaluation, shared min/max per metric.
+                cmap = {"MPS": "YlOrBr", "PP": "YlGn", "SV": "PuBu"}
+
+                # Only the Energy metric is coloured; shared min/max per metric.
+                cmap = {("MPS", "Energy"): "YlOrBr",
+                        ("PP",  "Energy"): "YlGn",
+                        ("SV",  "Energy"): "PuBu"}
+
+                # MPS and PP share their min/max; SV has its own min/max.
+                cmap = [
+                    {"MPS": "YlOrBr", "PP": "YlGn"},
+                    {"SV": "PuBu"},
+                ]
+
         target_format: Dictates how values are formatted. See implementation of
             :class:`Aggregator` for details. Defaults to "text".
         precision: Optional precision of values, e.g., number of decimal places.
             If None, then the default value is ``4`` if any value in
-            ``agg_values`` is "approximation_ratio" and ``0`` otherwise. The
+            ``agg_values`` is "approximation_ratio" or "energy" and ``0`` otherwise. The
             precision for different ``agg_values`` can be different by providing
             a dictionary. See implementation of :class:`Aggregator` for details.
             Defaults to None.
@@ -475,27 +500,40 @@ def formatted_styler_for(
             another depth, then the row for ``TQA`` will still be shown. If
             False, only row values present in the displayed data is shown.
             Defaults to False.
-        acronym_mapping: Optional dictionary mapping method acronyms (e.g., "FA",
-            "TQA") to human-readable phrases (e.g., "Fixed Angle", "TQA"). Method
-            names are automatically formatted using :func:`format_method_name` to
-            include the phrase and an optimization marker. If None, method names
-            are used as-is. Defaults to None.
-        optimized_marker: String to append to method names that have
-            optimization enabled (e.g., methods ending in "_opt"). If None,
-            either ``"*"`` or ``"$^\\star$"`` is used, depending on
-            ``target_format``. Defaults to None.
+        optimized_marker: This parameter is no longer used.
+            Method labels are now determined by the METHOD_CONFIG_TO_LABELS
+            constant in the constants module. Defaults to None.
         exclude_methods: Optional list of method acronyms to exclude from the
             formatted table. Methods whose names start with any of these
             acronyms will be filtered out. For example, passing ``["FA", "I"]``
             would exclude all Fixed Angle and Interpolation methods. If None,
             no methods are excluded. Defaults to None.
+        restrict_mps_to_aer: Restricts the table to methods that use the Qiskit
+            Aer simulator, only for MPS energy evaluation methods. If False, all
+            methods are shown for MPS. Defaults to False.
+        reference_methods: Optional dictionary mapping (evaluation_method, graph_type)
+            tuples to reference trainer config names. When provided, for each
+            (evaluation_method, graph_type) pair, only graph instances present in
+            the reference training method are included for all other training methods
+            with the same evaluation method and graph type. This ensures consistent
+            instance counts across training methods. For example::
+
+                reference_methods = {
+                    ("SV", "random_regular"): "F_SV.json",
+                    ("MPS", "heavy_hex"): "LR_PP_opt.json"
+                }
+
+            If None, no instance filtering is applied. Defaults to None.
 
     Raises:
         ValueError: If ``agg_values`` is an unrecognised value.
+        ValueError: If two :data:`ColorMapping` instances in ``cmap`` specify
+            colours for the same ``(evaluation, field)`` combination.
 
     Returns:
-        The tuple ``(df, styler)`` where ``styler`` contains appropriate
-        colours, naming, etc. for inclusion in a paper.
+        The tuple ``(df, styler, cmap_ranges)`` where ``styler`` contains appropriate
+        colours, naming, etc. for inclusion in a paper, and ``cmap_ranges`` contains
+        the min/max values used for coloring each field.
     """
 
     # Normalize agg_values to a list
@@ -508,19 +546,41 @@ def formatted_styler_for(
         precision = {
             "approximation_ratio": 1,
             "num_instances": 0,
+            "energy": 2,
         }
     elif isinstance(precision, int):
-        precision = {"approximation_ratio": precision, "num_instances": precision}
+        precision = {
+            "approximation_ratio": precision,
+            "num_instances": precision,
+            "energy": precision,
+        }
 
     for _agg_value in agg_values_list:
         assert _agg_value in precision, (
             f"{_agg_value} not found in precision dictionary."
         )
+    # Determine the optimized marker to use for replacing METHOD_OPTMARKER_PLACEHOLDER
     if optimized_marker is None:
         if target_format == "text":
             optimized_marker = "*"
         else:
             optimized_marker = "$^\\star$"
+
+    # *** Apply instance filtering if reference configs are provided
+    if reference_methods is not None:
+        # Determine the depth to use for filtering
+        filter_depth = None
+        if depths is not None:
+            if isinstance(depths, int):
+                filter_depth = depths
+            elif len(depths) == 1:
+                filter_depth = depths[0]
+            # If multiple depths, we don't filter by depth
+
+        table = table.filter_to_common_instances(
+            reference_methods=reference_methods,
+            depth=filter_depth,
+        )
 
     # *** Pivot dataframe and aggregate appropriately
     _data = table.to_dataframe()
@@ -554,11 +614,22 @@ def formatted_styler_for(
                     format=target_format,
                 )
             __agg_values_dict[agg_val] = agg_val
+        elif agg_val == "energy":
+            if with_fancy_values:
+                aggregators[agg_val] = FancyStdDevAggregator(
+                    precision=precision[agg_val], format=target_format
+                )
+            else:
+                aggregators[agg_val] = MeanAggregator(
+                    precision=precision[agg_val],
+                    format=target_format,
+                )
+            __agg_values_dict[agg_val] = "energy"
         else:
             # We shouldn't get here, but it's good practice to handle this default
             # branch of the if statements.
             raise ValueError(
-                "agg_values {!r} must be either 'num_instances' or 'approximation_ratio'.".format(
+                "agg_values {!r} must be either 'num_instances', 'approximation_ratio', or 'energy'.".format(
                     agg_val
                 )
             )
@@ -570,11 +641,26 @@ def formatted_styler_for(
             depths = [depths]
         filtered_data = filtered_data[filtered_data["depth"].isin([d for d in depths])]
     if num_nodes is not None:
-        if isinstance(num_nodes, int):
-            num_nodes = [num_nodes]
-        filtered_data = filtered_data[
-            filtered_data["num_nodes"].isin([d for d in num_nodes])
-        ]
+        if isinstance(num_nodes, dict):
+            # Per-evaluation filtering: build a boolean mask that keeps a row
+            # when either (a) its evaluation method is not in the dict, or
+            # (b) its num_nodes value is in the allowed set for that evaluation.
+            def _num_nodes_mask(row) -> bool:
+                eval_method = row["evaluation"]
+                if eval_method not in num_nodes:
+                    return True
+                allowed = num_nodes[eval_method]
+                if isinstance(allowed, int):
+                    allowed = [allowed]
+                return row["num_nodes"] in allowed
+
+            filtered_data = filtered_data[filtered_data.apply(_num_nodes_mask, axis=1)]
+        else:
+            if isinstance(num_nodes, int):
+                num_nodes = [num_nodes]
+            filtered_data = filtered_data[
+                filtered_data["num_nodes"].isin(list(num_nodes))
+            ]
 
     # Filter out excluded methods by checking if method starts with any excluded acronym
     if exclude_methods is not None:
@@ -586,6 +672,12 @@ def formatted_styler_for(
         )
         filtered_data = filtered_data[mask]
 
+    if restrict_mps_to_aer:
+        # Remove rows where MPS is used without Aer
+        filtered_data = filtered_data[
+            ~((filtered_data["evaluation"] == "MPS") & (~filtered_data["uses_aer"]))
+        ]
+
     # *** Pivot table
     # Pivot and use aggregators - create separate pivot for each value if multiple
     if len(agg_values_list) == 1:
@@ -595,7 +687,7 @@ def formatted_styler_for(
             columns=["graph_type"],
             index=[
                 "evaluation",
-                "method",
+                "method_label",
             ],
             values=__agg_values_dict[agg_val],
             aggfunc=aggregators[agg_val],  # type:ignore
@@ -606,7 +698,7 @@ def formatted_styler_for(
             columns=["graph_type"],
             index=[
                 "evaluation",
-                "method",
+                "method_label",
             ],
             values=[__agg_values_dict[agg_val] for agg_val in agg_values_list],
             # values=agg_values_list,
@@ -621,11 +713,24 @@ def formatted_styler_for(
     # figure out which attributes we have in the columns, and (iii) create a
     # list of tuples appropriate for reindexing.
 
-    # Row index should include the evaluation method and trainer config, even
+    # Row index should include the evaluation method and method label, even
     # though one is derived from the other.
     if show_empty_rows:
         # Filter out excluded methods when creating the row index
+        # Build list of (evaluation, method_label) tuples from all methods
+        from .constants import METHOD_CONFIG_TO_LABELS
+
         _methods_to_include = table.all_methods()
+        # Remove non-Aer methods restrict_mps_to_aer is True
+        if restrict_mps_to_aer:
+            # We only include methods that (1) are for PP or SV or (2) are for MPS and use Aer.
+            _methods_to_include = [
+                _method
+                for _method in _methods_to_include
+                if table.trainer_config_to_evaluation(_method) != "MPS"
+                or "Aer" in table.trainer_config_to_method(_method)
+            ]
+        # If exclude_methods is provided, we must remove those methods
         if exclude_methods is not None:
             _methods_to_include = [
                 _method_json
@@ -636,23 +741,22 @@ def formatted_styler_for(
                 )
             ]
 
-        _row_index = pd.MultiIndex.from_tuples(
-            sorted(
-                [
-                    (
-                        table.trainer_config_to_evaluation(_method_json),
-                        table.trainer_config_to_method(_method_json),
-                    )
-                    for _method_json in _methods_to_include
-                ]
+        # Create tuples and deduplicate since multiple MethodConfigJSON can map to same label
+        _row_tuples = [
+            (
+                table.trainer_config_to_evaluation(_method_json),
+                METHOD_CONFIG_TO_LABELS[table.trainer_config_to_method(_method_json)],
             )
-        )
+            for _method_json in _methods_to_include
+        ]
+        # Remove duplicates while preserving order, then sort
+        _row_index = pd.MultiIndex.from_tuples(sorted(list(dict.fromkeys(_row_tuples))))
     else:
         _row_index = pivot.index.sort_values()
 
     # Reindex:
-    # 1. The trainer config row index now has two columns: the evaluation method
-    #    and the training method. All methods are included.
+    # 1. The row index now has two columns: the evaluation method
+    #    and the method label. All methods are included.
     # 2. The columns contain the same number of rows. But now depth and
     #    num_nodes will contain all values if ``depths`` and ``num_nodes`` are
     #    None, respectively. Other columns will always contain all unique
@@ -664,18 +768,15 @@ def formatted_styler_for(
 
     # Rename columns to use graph types from table.
     pivot = pivot.rename(columns=table.formatter_graph_type())
-    # Remove suffixes ".json" from columns and indexes.
-    pivot = remove_json_suffix_df(pivot)
-    # Rename method names if acronym mapping is provided
-    if acronym_mapping is not None:
-        # Get all unique method names from the index
-        method_names = pivot.index.get_level_values(1).unique().tolist()
-        # Create the method name mapping using the acronym mapping
-        method_name_mapping = {
-            _method: format_method_name(_method, acronym_mapping, optimized_marker)
-            for _method in method_names
-        }
-        pivot = pivot.rename(index=method_name_mapping, level=1)
+
+    # Create a mapping to replace the placeholder in method labels (level 1)
+    label_mapping = {
+        label: upgrade_label_to_latex(
+            label, target_format=target_format, optimized_marker=optimized_marker
+        )
+        for label in pivot.index.get_level_values(1).unique()
+    }
+    pivot = pivot.rename(index=label_mapping, level=1)
 
     # Rename columns
     column_renamings = {
@@ -684,6 +785,7 @@ def formatted_styler_for(
         # As we use num_nodes to compute the number of instances, we rename it
         # to the same as "num_instances"
         "num_nodes": "Num. Instances",
+        "energy": "Energy",
     }
     pivot = pivot.rename(columns=column_renamings)
 
@@ -698,90 +800,159 @@ def formatted_styler_for(
 
     # *** Set background colours
     cmap_ranges: dict[str, tuple[float, float]] = {}
-    if cmap is not None:
-        if isinstance(cmap, str):
-            # Single colormap for all evaluations and fields
-            _cmap_dict = {(None, agg_val): cmap for agg_val in agg_values_list}
+
+    # Normalise cmap to list[ColorMapping]
+    if not isinstance(cmap, list):
+        cmap_list: list[ColorMapping] = [cmap]
+    else:
+        cmap_list = list(cmap)
+
+    # Helper: expand a single ColorMapping to a canonical dict[tuple[str | None,
+    # str], str] (evaluation, field) -> colormap_name. Returns an empty dict for
+    # None entries.
+    def _expand_color_mapping(
+        cm: ColorMapping,
+    ) -> dict[tuple[str | None, str], str]:
+        if cm is None:
+            return {}
+        if isinstance(cm, str):
+            # Single colormap for all evaluations and all fields
+            return {(None, agg_val): cm for agg_val in agg_values_list}
+        # It's a dict – inspect the first key to determine format.
+        first_key = next(iter(cm.keys()))
+        if isinstance(first_key, tuple):
+            # New format: keys are already (evaluation, field) tuples.
+            return dict(cm)  # type: ignore[arg-type]
         else:
-            # Check if it's the old format (dict[str, str]) or new format (dict[tuple, str])
-            # by examining the first key
-            first_key = next(iter(cmap.keys()))
-            if isinstance(first_key, tuple):
-                # New format: keys are (evaluation, field) tuples
-                _cmap_dict = cmap
-            else:
-                # Old format: keys are just evaluation strings
-                # Convert to new format by applying to all fields
-                _cmap_dict = {
-                    (eval_key, agg_val): colormap
-                    for eval_key, colormap in cmap.items()
-                    for agg_val in agg_values_list
-                }
+            # Old format: keys are evaluation strings; apply to all fields.
+            return {
+                (eval_key, agg_val): colormap
+                for eval_key, colormap in cm.items()  # type: ignore[union-attr]
+                for agg_val in agg_values_list
+            }
 
-        # Compute min/max for each field separately
-        _vmin_dict: dict[str, float] = {}
-        _vmax_dict: dict[str, float] = {}
-
-        for agg_val in agg_values_list:
-            # Get the aggregator for this field
-            aggregator = aggregators[agg_val]
-
-            # Extract data for this field from pivot
-            if len(agg_values_list) == 1:
-                # Single value - pivot is a simple DataFrame
-                _field_data = pivot
-            else:
-                # Multiple values - pivot has MultiIndex columns with field as first level
-                _field_data = pivot[column_renamings[agg_val]]
-
-            # Map back to base data and compute min/max for this field
-            _base_data = _unformat_data(_field_data, aggregator=aggregator)
-            _vmin_dict[agg_val] = _base_data.min().min()
-            _vmax_dict[agg_val] = _base_data.max().max()
-
-        for (_evaluation, _field), _cmap in _cmap_dict.items():
-            # Get the aggregator and min/max for this field
-            aggregator = aggregators[_field]
-            _vmin = _vmin_dict[_field]
-            _vmax = _vmax_dict[_field]
-
-            # Determine subset based on evaluation and field
-            if len(agg_values_list) == 1:
-                # Single value case
-                _subset = (
-                    pd.IndexSlice[[_evaluation], :]
-                    if _evaluation is not None
-                    else slice(None)
+    # Validate: no two ColorMapping instances may cover the same
+    # (evaluation, field) combination.
+    _seen_keys: dict[tuple[str | None, str], int] = {}
+    for _cm_idx, _cm in enumerate(cmap_list):
+        _expanded = _expand_color_mapping(_cm)
+        for _key in _expanded:
+            if _key in _seen_keys:
+                raise ValueError(
+                    (
+                        "Two ColorMapping instances (indices {first} and {second}) both "
+                        + "specify a cmap for (evaluation={eval!r}, field={field!r}). "
+                        + "Each (evaluation, field) combination must appear in at most one "
+                        + "ColorMapping so that min/max ranges are unambiguous."
+                    ).format(
+                        first=_seen_keys[_key],
+                        second=_cm_idx,
+                        eval=_key[0],
+                        field=_key[1],
+                    )
                 )
-            else:
-                # Multiple values case - need to select both field and evaluation
-                if _evaluation is not None:
-                    _subset = pd.IndexSlice[
-                        [_evaluation], column_renamings[__agg_values_dict[_field]]
-                    ]
+            _seen_keys[_key] = _cm_idx
+
+    # Apply each ColorMapping independently with its own min/max range.
+    if any(cm is not None for cm in cmap_list):
+        for _cm in cmap_list:
+            if _cm is None:
+                continue
+
+            _cmap_dict = _expand_color_mapping(_cm)
+            if not _cmap_dict:
+                continue
+
+            # Determine which (evaluation, field) pairs are covered by this
+            # ColorMapping so we can compute the min/max only over those rows.
+            _covered_fields: set[str] = {field for (_, field) in _cmap_dict}
+            _covered_evaluations: set[str | None] = {eval_ for (eval_, _) in _cmap_dict}
+
+            # Compute min/max for each field covered by this ColorMapping.
+            # The range is computed over all evaluations that appear in this
+            # ColorMapping (or all evaluations when None is present).
+            _vmin_dict: dict[str, float] = {}
+            _vmax_dict: dict[str, float] = {}
+
+            for agg_val in _covered_fields:
+                aggregator = aggregators[agg_val]
+
+                # Extract the full field data from the pivot table.
+                if len(agg_values_list) == 1:
+                    _field_data = pivot
                 else:
-                    _subset = pd.IndexSlice[
-                        :, column_renamings[__agg_values_dict[_field]]
+                    _field_data = pivot[column_renamings[agg_val]]
+
+                # If None is among the covered evaluations for this field, use
+                # all rows; otherwise restrict to the covered evaluations.
+                _evals_for_field: set[str | None] = {
+                    eval_ for (eval_, f) in _cmap_dict if f == agg_val
+                }
+                if None in _evals_for_field:
+                    # All evaluations contribute to the range.
+                    _range_data = _field_data
+                else:
+                    # Only the listed evaluations contribute.
+                    _eval_list = [e for e in _evals_for_field if e is not None]
+                    # The first level of the row MultiIndex is the evaluation.
+                    _range_data = _field_data.loc[
+                        _field_data.index.get_level_values(0).isin(_eval_list)
                     ]
 
-            # Apply a custom function that applies background_gradient using the
-            # "base" value of the data. See _unformatted_background_gradient and
-            # _unformat_data.
-            styler = styler.apply(
-                partial(_unformatted_background_gradient, aggregator=aggregator),
-                vmin=_vmin,
-                vmax=_vmax,
-                cmap=_cmap,
-                # Following parameters taken from implementation of Styler.background_gradient.
-                axis=0,
-                subset=_subset,
-                low=0,
-                high=0,
-                text_color_threshold=0.408,
-                gmap=None,
-            )
-            cmap_ranges[_field] = (_vmin, _vmax)
+                _base_data = _unformat_data(_range_data, aggregator=aggregator)
+                _vmin_dict[agg_val] = float(_base_data.min().min())
+                _vmax_dict[agg_val] = float(_base_data.max().max())
 
+            # Apply background gradient for each (evaluation, field) entry.
+            for (_evaluation, _field), _cmap_name in _cmap_dict.items():
+                aggregator = aggregators[_field]
+                _vmin = _vmin_dict[_field]
+                _vmax = _vmax_dict[_field]
+
+                # Determine the pandas IndexSlice subset.
+                if len(agg_values_list) == 1:
+                    _subset = (
+                        pd.IndexSlice[[_evaluation], :]
+                        if _evaluation is not None
+                        else slice(None)
+                    )
+                else:
+                    if _evaluation is not None:
+                        _subset = pd.IndexSlice[
+                            [_evaluation],
+                            column_renamings[__agg_values_dict[_field]],
+                        ]
+                    else:
+                        _subset = pd.IndexSlice[
+                            :,
+                            column_renamings[__agg_values_dict[_field]],
+                        ]
+
+                # Check if the subset would be empty, i.e., if the evaluation method is even present
+                # in the data. This can happen if show_empty_rows=False and there is insufficient
+                # data.
+                if _evaluation is not None:
+                    if _evaluation not in pivot.index.get_level_values(0):
+                        continue
+
+                styler = styler.apply(
+                    partial(_unformatted_background_gradient, aggregator=aggregator),
+                    vmin=_vmin,
+                    vmax=_vmax,
+                    cmap=_cmap_name,
+                    # Following parameters taken from implementation of
+                    # Styler.background_gradient.
+                    axis=0,
+                    subset=_subset,
+                    low=0,
+                    high=0,
+                    text_color_threshold=0.408,
+                    gmap=None,
+                )
+                # Record the range used; later ColorMappings may overwrite this
+                # for the same field, which is intentional (last writer wins for
+                # the returned cmap_ranges dict).
+                cmap_ranges[_field] = (_vmin, _vmax)
         # Missing values should not have a colour, which is the default with
         # Styler.background_gradient
         styler = styler.highlight_null(props="background-color:white;color:black")
@@ -795,6 +966,7 @@ def formatted_styler_for(
     column_rename = {
         "approximation_ratio": "Approximation Ratio",
         "num_instances": "Num. Instances",
+        "energy": "Energy",
     }
     pivot = pivot.rename(columns=column_rename)
     styler.data = styler.data.rename(columns=column_rename)
@@ -802,7 +974,9 @@ def formatted_styler_for(
     return pivot, styler, cmap_ranges
 
 
-def convert_evaluation_to_multicolumn_latex(latex_str: str) -> str:
+def convert_evaluation_to_multicolumn_latex(
+    latex_str: str, num_metrics: int = 1
+) -> str:
     """Convert evaluation method rows in LaTeX tables to multicolumn cells.
 
     This function post-processes LaTeX table output to:
@@ -815,6 +989,9 @@ def convert_evaluation_to_multicolumn_latex(latex_str: str) -> str:
 
     Args:
         latex_str: The LaTeX table string generated by Styler.to_latex()
+        num_metrics: Number of metrics in the table (e.g., 1 for single metric like
+            "num_instances", 2 for both "approximation_ratio" and "num_instances").
+            Used to determine the number of graph columns. Defaults to 1.
 
     Returns:
         Modified LaTeX string with evaluation methods as multicolumn headers
@@ -857,8 +1034,8 @@ def convert_evaluation_to_multicolumn_latex(latex_str: str) -> str:
             new_col_spec = col_spec[1:]
             num_columns = len([c for c in new_col_spec if c in "lcrp"])
 
-            # Build column specification with vertical borders every 4 columns
-            # The first column is the method name, then groups of 4 value columns
+            # Build column specification with vertical borders separating metrics
+            # The first column is the method name, then groups of graph columns
             col_chars = [c for c in new_col_spec if c in "lcrp"]
             formatted_cols = []
 
@@ -867,11 +1044,17 @@ def convert_evaluation_to_multicolumn_latex(latex_str: str) -> str:
                 formatted_cols.append(col_chars[0])
                 formatted_cols.append("|")
 
-                for i in range(1, len(col_chars[1:]), 4):
+                # Calculate number of graph columns based on number of metrics
+                # Total data columns = (number of columns - 1 for method column)
+                # Number of graphs = total data columns / num_metrics
+                data_cols = len(col_chars) - 1
+                num_graph_types = data_cols // num_metrics
+
+                for i in range(1, len(col_chars), num_graph_types):
                     # Replace left-align with centred as we are most likely
                     # dealing with numerical values or headings
                     formatted_cols.append(
-                        "".join(col_chars[i : i + 4]).replace("l", "c")
+                        "".join(col_chars[i : i + num_graph_types]).replace("l", "c")
                     )
                     formatted_cols.append("|")
 

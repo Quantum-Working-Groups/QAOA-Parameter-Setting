@@ -89,8 +89,8 @@ Returns:
 
 re_graph_idx = re.compile(r"^([\d]+)_")
 graph_idx = __regex_pattern_for(
-    re_num_nodes,
-    "number of nodes",
+    re_graph_idx,
+    "graph index",
     match_parse=lambda x: int(x.group(1)),
     return_none_instead=False,
 )
