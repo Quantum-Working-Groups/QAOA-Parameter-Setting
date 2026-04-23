@@ -12,6 +12,7 @@ from typing import (
     Any,
     Callable,
     Literal,
+    Mapping,
     NoReturn,
     TypeAlias,
     TypedDict,
@@ -1010,9 +1011,9 @@ class ResultsDatabase:
 
     def only_common_instances(
         self,
-        reference_methods: dict[
+        reference_methods: Mapping[
             EvaluationType | tuple[Literal["MPS"], bool],
-            dict[GraphType, MethodConfigJSON],
+            Mapping[GraphType, MethodConfigJSON],
         ],
         per_depth: bool = True,
     ) -> "ResultsDatabase":
