@@ -1,17 +1,17 @@
 """Code to format a Pandas table generated from SummaryTable."""
 
+import re
 from abc import abstractmethod
 from collections.abc import Callable
 from functools import partial
-import re
 from typing import Any, Literal, TypeAlias, TypeVar
 
 import pandas as pd
+from pandas import DataFrame
 from pandas.io.formats.style import Styler, _background_gradient
 
-from .constants import METHOD_OPTMARKER_PLACEHOLDER
-from qaoa_parameter_setting.utils.summary.summary_table import SummaryTable
-from qaoa_parameter_setting.utils.summary.utils import MethodJSON
+import qaoa_parameter_setting.utils as utils
+from qaoa_parameter_setting.utils.database import ResultsDatabase
 
 ColorMapping: TypeAlias = (
     str
@@ -37,21 +37,6 @@ All entries within a single :data:`ColorMapping` share the same min/max range pe
 """
 
 __slots__ = ["formatted_styler_for", "convert_evaluation_to_multicolumn_latex"]
-
-
-def upgrade_label_to_latex(
-    label: str,
-    target_format: Literal["text", "latex", "siunitx"],
-    optimized_marker: str,
-) -> str:
-    # Replace the placeholder with the actual optimized marker for all formats
-    label = label.replace(METHOD_OPTMARKER_PLACEHOLDER, optimized_marker)
-
-    # Apply LaTeX-specific formatting
-    if target_format == "latex" or target_format == "siunitx":
-        label = label.replace("†", "$^\\dagger$")
-
-    return label
 
 
 def __rename_index(obj, rename_func: Callable[[str], str]):
@@ -383,7 +368,7 @@ T = TypeVar("T", bound=pd.Series | pd.DataFrame)
 
 def _unformat_data(formatted_data: T, aggregator: AggregatorFormatter) -> T:
     """Map ``formatted_data`` using :meth:`AggregatorFormatter.base_value`."""
-    return formatted_data.map(aggregator.base_value)
+    return formatted_data.map(aggregator.base_value)  # pyright: ignore[reportReturnType]
 
 
 def _unformatted_background_gradient(
@@ -396,7 +381,7 @@ def _unformatted_background_gradient(
 
 
 def formatted_styler_for(
-    table: SummaryTable,
+    db: ResultsDatabase,
     agg_values: Literal["approximation_ratio", "num_instances", "energy"]
     | list[Literal["approximation_ratio", "num_instances", "energy"]],
     depths: int | list[int] | None = None,
@@ -409,15 +394,12 @@ def formatted_styler_for(
     | None = None,
     missing_data_str: str = "-",
     show_empty_rows: bool = True,
-    optimized_marker: str | None = None,
     exclude_methods: list[str] | None = None,
-    restrict_mps_to_aer: bool = False,
-    reference_methods: dict[tuple[str, str], MethodJSON] | None = None,
 ) -> tuple[pd.DataFrame, Styler, dict[str, tuple[float, float]]]:
     """Format a dataframe as a pivot table with appropriate styling.
 
     Args:
-        table: The :class:`SummaryTable` instance whose data should be formatted.
+        db: The :class:`ResultsDatabase` instance whose data should be formatted.
         agg_values: Values to aggregate. Can be a single value or a list of values.
             Options are "approximation_ratio", "num_instances", or "energy".
         depths: Depths to show in the data. Results for different depths will
@@ -472,16 +454,18 @@ def formatted_styler_for(
                 cmap = "Greens"
 
                 # Different colormaps per evaluation, shared min/max per metric.
-                cmap = {"MPS": "YlOrBr", "PP": "YlGn", "SV": "PuBu"}
+                cmap = {"MPS (Aer)": "YlOrBr", "MPS (Quimb)": "Oranges", "PP": "YlGn", "SV": "PuBu"}
 
                 # Only the Energy metric is coloured; shared min/max per metric.
-                cmap = {("MPS", "Energy"): "YlOrBr",
+                cmap = {("MPS (Aer)", "Energy"): "YlOrBr",
+                        ("MPS (Quimb)", "Energy"): "Oranges",
                         ("PP",  "Energy"): "YlGn",
                         ("SV",  "Energy"): "PuBu"}
 
-                # MPS and PP share their min/max; SV has its own min/max.
+                # MPS (Aer) and PP share their min/max; MPS (Quimb) and SV have their own min/max.
                 cmap = [
-                    {"MPS": "YlOrBr", "PP": "YlGn"},
+                    {"MPS (Aer)": "YlOrBr", "PP": "YlGn"},
+                    {"MPS (Quimb)": "Oranges"},
                     {"SV": "PuBu"},
                 ]
 
@@ -500,27 +484,22 @@ def formatted_styler_for(
             another depth, then the row for ``TQA`` will still be shown. If
             False, only row values present in the displayed data is shown.
             Defaults to False.
-        optimized_marker: This parameter is no longer used.
-            Method labels are now determined by the METHOD_CONFIG_TO_LABELS
-            constant in the constants module. Defaults to None.
         exclude_methods: Optional list of method acronyms to exclude from the
             formatted table. Methods whose names start with any of these
             acronyms will be filtered out. For example, passing ``["FA", "I"]``
             would exclude all Fixed Angle and Interpolation methods. If None,
             no methods are excluded. Defaults to None.
-        restrict_mps_to_aer: Restricts the table to methods that use the Qiskit
-            Aer simulator, only for MPS energy evaluation methods. If False, all
-            methods are shown for MPS. Defaults to False.
-        reference_methods: Optional dictionary mapping (evaluation_method, graph_type)
+        reference_methods: Optional dictionary mapping (evaluation_label, graph_type)
             tuples to reference trainer config names. When provided, for each
-            (evaluation_method, graph_type) pair, only graph instances present in
+            (evaluation_label, graph_type) pair, only graph instances present in
             the reference training method are included for all other training methods
-            with the same evaluation method and graph type. This ensures consistent
+            with the same evaluation_label and graph type. This ensures consistent
             instance counts across training methods. For example::
 
                 reference_methods = {
                     ("SV", "random_regular"): "F_SV.json",
-                    ("MPS", "heavy_hex"): "LR_PP_opt.json"
+                    ("MPS (Aer)", "heavy_hex"): "LR_PP_opt.json",
+                    ("MPS (Quimb)", "heavy_hex"): "I_MPS.json"
                 }
 
             If None, no instance filtering is applied. Defaults to None.
@@ -528,7 +507,7 @@ def formatted_styler_for(
     Raises:
         ValueError: If ``agg_values`` is an unrecognised value.
         ValueError: If two :data:`ColorMapping` instances in ``cmap`` specify
-            colours for the same ``(evaluation, field)`` combination.
+            colours for the same ``(evaluation_label, field)`` combination.
 
     Returns:
         The tuple ``(df, styler, cmap_ranges)`` where ``styler`` contains appropriate
@@ -559,31 +538,25 @@ def formatted_styler_for(
         assert _agg_value in precision, (
             f"{_agg_value} not found in precision dictionary."
         )
-    # Determine the optimized marker to use for replacing METHOD_OPTMARKER_PLACEHOLDER
-    if optimized_marker is None:
-        if target_format == "text":
-            optimized_marker = "*"
-        else:
-            optimized_marker = "$^\\star$"
 
-    # *** Apply instance filtering if reference configs are provided
-    if reference_methods is not None:
-        # Determine the depth to use for filtering
-        filter_depth = None
-        if depths is not None:
-            if isinstance(depths, int):
-                filter_depth = depths
-            elif len(depths) == 1:
-                filter_depth = depths[0]
-            # If multiple depths, we don't filter by depth
+    # # *** Apply instance filtering if reference configs are provided
+    # if reference_methods is not None:
+    #     # Determine the depth to use for filtering
+    #     filter_depth = None
+    #     if depths is not None:
+    #         if isinstance(depths, int):
+    #             filter_depth = depths
+    #         elif len(depths) == 1:
+    #             filter_depth = depths[0]
+    #         # If multiple depths, we don't filter by depth
 
-        table = table.filter_to_common_instances(
-            reference_methods=reference_methods,
-            depth=filter_depth,
-        )
+    #     table = table.filter_to_common_instances(
+    #         reference_methods=reference_methods,
+    #         depth=filter_depth,
+    #     )
 
     # *** Pivot dataframe and aggregate appropriately
-    _data = table.to_dataframe()
+    _data: DataFrame = db.to_dataframe()
 
     # Create aggregators and determine values for each field
     aggregators: dict[str, AggregatorFormatter] = {}
@@ -635,11 +608,11 @@ def formatted_styler_for(
             )
 
     # *** Filter based on depth, num_nodes, and excluded methods
-    filtered_data = _data
+    filtered_data: DataFrame = _data
     if depths is not None:
         if isinstance(depths, int):
             depths = [depths]
-        filtered_data = filtered_data[filtered_data["depth"].isin([d for d in depths])]
+        filtered_data = filtered_data[filtered_data["depth"].isin([d for d in depths])]  # pyright: ignore[reportAssignmentType]
     if num_nodes is not None:
         if isinstance(num_nodes, dict):
             # Per-evaluation filtering: build a boolean mask that keeps a row
@@ -654,11 +627,13 @@ def formatted_styler_for(
                     allowed = [allowed]
                 return row["num_nodes"] in allowed
 
-            filtered_data = filtered_data[filtered_data.apply(_num_nodes_mask, axis=1)]
+            filtered_data = filtered_data[  # pyright: ignore[reportAssignmentType]
+                filtered_data.apply(_num_nodes_mask, axis=1)
+            ]
         else:
             if isinstance(num_nodes, int):
                 num_nodes = [num_nodes]
-            filtered_data = filtered_data[
+            filtered_data = filtered_data[  # pyright: ignore[reportAssignmentType]
                 filtered_data["num_nodes"].isin(list(num_nodes))
             ]
 
@@ -670,13 +645,7 @@ def formatted_styler_for(
                 method.startswith(acronym) for acronym in exclude_methods
             )
         )
-        filtered_data = filtered_data[mask]
-
-    if restrict_mps_to_aer:
-        # Remove rows where MPS is used without Aer
-        filtered_data = filtered_data[
-            ~((filtered_data["evaluation"] == "MPS") & (~filtered_data["uses_aer"]))
-        ]
+        filtered_data = filtered_data[mask]  # pyright: ignore[reportAssignmentType]
 
     # *** Pivot table
     # Pivot and use aggregators - create separate pivot for each value if multiple
@@ -686,7 +655,7 @@ def formatted_styler_for(
         pivot = filtered_data.pivot_table(
             columns=["graph_type"],
             index=[
-                "evaluation",
+                "evaluation_label",
                 "method_label",
             ],
             values=__agg_values_dict[agg_val],
@@ -697,7 +666,7 @@ def formatted_styler_for(
         pivot = filtered_data.pivot_table(
             columns=["graph_type"],
             index=[
-                "evaluation",
+                "evaluation_label",
                 "method_label",
             ],
             values=[__agg_values_dict[agg_val] for agg_val in agg_values_list],
@@ -717,26 +686,17 @@ def formatted_styler_for(
     # though one is derived from the other.
     if show_empty_rows:
         # Filter out excluded methods when creating the row index
-        # Build list of (evaluation, method_label) tuples from all methods
-        from .constants import METHOD_CONFIG_TO_LABELS
-
-        _methods_to_include = table.all_methods()
-        # Remove non-Aer methods restrict_mps_to_aer is True
-        if restrict_mps_to_aer:
-            # We only include methods that (1) are for PP or SV or (2) are for MPS and use Aer.
-            _methods_to_include = [
-                _method
-                for _method in _methods_to_include
-                if table.trainer_config_to_evaluation(_method) != "MPS"
-                or "Aer" in table.trainer_config_to_method(_method)
-            ]
+        # Build list of (evaluation_label, method_label) tuples from all methods
+        _methods_to_include = db.list_methods()
         # If exclude_methods is provided, we must remove those methods
         if exclude_methods is not None:
             _methods_to_include = [
                 _method_json
-                for _method_json in table.all_methods()
+                for _method_json in db.list_methods()
                 if not any(
-                    table.trainer_config_to_method(_method_json).startswith(acronym)
+                    utils.labels.trainer_config_to_method(_method_json).startswith(
+                        acronym
+                    )
                     for acronym in exclude_methods
                 )
             ]
@@ -744,8 +704,8 @@ def formatted_styler_for(
         # Create tuples and deduplicate since multiple MethodConfigJSON can map to same label
         _row_tuples = [
             (
-                table.trainer_config_to_evaluation(_method_json),
-                METHOD_CONFIG_TO_LABELS[table.trainer_config_to_method(_method_json)],
+                utils.labels.trainer_config_to_evaluation_label(_method_json),
+                utils.labels.trainer_config_to_method_label(_method_json),
             )
             for _method_json in _methods_to_include
         ]
@@ -766,14 +726,12 @@ def formatted_styler_for(
     )
     # *** End of reindexing
 
-    # Rename columns to use graph types from table.
-    pivot = pivot.rename(columns=table.formatter_graph_type())
+    # Rename columns to use graph types from db.
+    pivot = pivot.rename(columns=utils.constants.GRAPH_TYPE_ACRONYMS)
 
     # Create a mapping to replace the placeholder in method labels (level 1)
     label_mapping = {
-        label: upgrade_label_to_latex(
-            label, target_format=target_format, optimized_marker=optimized_marker
-        )
+        label: utils.labels.format_method_label_to(label, format=target_format)
         for label in pivot.index.get_level_values(1).unique()
     }
     pivot = pivot.rename(index=label_mapping, level=1)
@@ -791,7 +749,7 @@ def formatted_styler_for(
 
     # *** Handle styler colours, precision, etc.
     # Set format options
-    styler = pivot.style.format(
+    styler: Styler = pivot.style.format(  # pyright: ignore[reportAssignmentType]
         # Set string for missing values, represented by nan.
         na_rep=missing_data_str,
         # We're escaping characters with AggregatorFormatter, not Styler.
@@ -816,15 +774,15 @@ def formatted_styler_for(
         if cm is None:
             return {}
         if isinstance(cm, str):
-            # Single colormap for all evaluations and all fields
+            # Single colormap for all evaluation_labels and all fields
             return {(None, agg_val): cm for agg_val in agg_values_list}
         # It's a dict – inspect the first key to determine format.
         first_key = next(iter(cm.keys()))
         if isinstance(first_key, tuple):
-            # New format: keys are already (evaluation, field) tuples.
+            # New format: keys are already (evaluation_label, field) tuples.
             return dict(cm)  # type: ignore[arg-type]
         else:
-            # Old format: keys are evaluation strings; apply to all fields.
+            # Old format: keys are evaluation_label strings; apply to all fields.
             return {
                 (eval_key, agg_val): colormap
                 for eval_key, colormap in cm.items()  # type: ignore[union-attr]
@@ -863,7 +821,7 @@ def formatted_styler_for(
             if not _cmap_dict:
                 continue
 
-            # Determine which (evaluation, field) pairs are covered by this
+            # Determine which (evaluation_label, field) pairs are covered by this
             # ColorMapping so we can compute the min/max only over those rows.
             _covered_fields: set[str] = {field for (_, field) in _cmap_dict}
             _covered_evaluations: set[str | None] = {eval_ for (eval_, _) in _cmap_dict}
@@ -877,7 +835,7 @@ def formatted_styler_for(
             for agg_val in _covered_fields:
                 aggregator = aggregators[agg_val]
 
-                # Extract the full field data from the pivot table.
+                # Extract the full field data from the pivot db.
                 if len(agg_values_list) == 1:
                     _field_data = pivot
                 else:
@@ -894,7 +852,7 @@ def formatted_styler_for(
                 else:
                     # Only the listed evaluations contribute.
                     _eval_list = [e for e in _evals_for_field if e is not None]
-                    # The first level of the row MultiIndex is the evaluation.
+                    # The first level of the row MultiIndex is the evaluation_label.
                     _range_data = _field_data.loc[
                         _field_data.index.get_level_values(0).isin(_eval_list)
                     ]
@@ -903,7 +861,7 @@ def formatted_styler_for(
                 _vmin_dict[agg_val] = float(_base_data.min().min())
                 _vmax_dict[agg_val] = float(_base_data.max().max())
 
-            # Apply background gradient for each (evaluation, field) entry.
+            # Apply background gradient for each (evaluation_label, field) entry.
             for (_evaluation, _field), _cmap_name in _cmap_dict.items():
                 aggregator = aggregators[_field]
                 _vmin = _vmin_dict[_field]
@@ -977,7 +935,7 @@ def formatted_styler_for(
 def convert_evaluation_to_multicolumn_latex(
     latex_str: str, num_metrics: int = 1
 ) -> str:
-    """Convert evaluation method rows in LaTeX tables to multicolumn cells.
+    """Convert evaluation_label rows in LaTeX tables to multicolumn cells.
 
     This function post-processes LaTeX table output to:
     1. Remove the entire first column (evaluation column)
@@ -985,7 +943,7 @@ def convert_evaluation_to_multicolumn_latex(
     3. Add \\midrule after each evaluation header
     4. Update \\cline commands to reflect the new column count
 
-    This creates cleaner section headers for each evaluation method (MPS, PP, SV).
+    This creates cleaner section headers for each evaluation method (MPS (Aer), MPS (Quimb), PP, SV).
 
     Args:
         latex_str: The LaTeX table string generated by Styler.to_latex()
@@ -1000,17 +958,17 @@ def convert_evaluation_to_multicolumn_latex(
     Example:
         Input:
         \\begin{tabular}{llllll}
-         & graph_type & ER & HH & L2F & RR \\\\
+         & graph_type & ER & HH & LB & RR \\\\
         evaluation & method &  &  &  &  \\\\
-        \\multirow[c]{5}{*}{MPS} & Fourier & {...} \\\\
+        \\multirow[c]{5}{*}{MPS (Aer)} & Fourier & {...} \\\\
          & Fourier (Aer) & {...} \\\\
         \\cline{1-6}
 
         Output:
         \\begin{tabular}{lllll}
-        graph_type & ER & HH & L2F & RR \\\\
+        graph_type & ER & HH & LB & RR \\\\
         method &  &  &  &  \\\\
-        \\multicolumn{5}{c}{MPS} \\\\
+        \\multicolumn{5}{c}{MPS (Aer)} \\\\
         \\midrule
         Fourier & {...} \\\\
         Fourier (Aer) & {...} \\\\
@@ -1030,7 +988,7 @@ def convert_evaluation_to_multicolumn_latex(
         if tabular_match and num_columns is None:
             # Count the column specifiers (l, c, r, p)
             col_spec = tabular_match.group(1)
-            # Remove the first column specifier (the evaluation/method column)
+            # Remove the first column specifier (the evaluation_label/method column)
             new_col_spec = col_spec[1:]
             num_columns = len([c for c in new_col_spec if c in "lcrp"])
 
@@ -1070,19 +1028,20 @@ def convert_evaluation_to_multicolumn_latex(
             processed_lines.append(new_line)
             continue
 
-        # Check if this line starts with \multirow (evaluation method row)
+        # Check if this line starts with \multirow (evaluation_label row)
         multirow_match = re.match(
             r"^\s*\\multirow\[c\]\{\d+\}\{\*\}\{([^}]+)\}\s*&\s*(.+)$", line
         )
 
         if multirow_match:
-            # Extract the evaluation method name and the rest of the row
+            # Extract the evaluation_label and the rest of the row
             eval_method = multirow_match.group(1)
             rest_of_row = multirow_match.group(2)
 
-            # Check if this looks like an evaluation method (MPS, PP, SV, etc.)
-            if eval_method and len(eval_method) <= 10 and num_columns:
-                # Figure out prefix to ensure the evaluation headings have the
+            # Check if this looks like an evaluation_label (MPS (Aer), MPS (Quimb), PP, SV, etc.)
+            # Max length is 14 to accommodate "MPS (Quimb)" which is 11 characters
+            if eval_method and len(eval_method) <= 14 and num_columns:
+                # Figure out prefix to ensure the evaluation_label headings have the
                 # correct vertical size. The first row needs to be slightly
                 # shorter, probably because it doesn't have maths text above it.
                 if not already_added_evaluation_method:
@@ -1090,12 +1049,12 @@ def convert_evaluation_to_multicolumn_latex(
                 else:
                     already_added_evaluation_method = True
                     prefix = "\\rule{0pt}{10pt}"
-                # Insert a multicolumn row for the evaluation method
+                # Insert a multicolumn row for the evaluation_label
                 multicolumn_line = (
                     f"\\multicolumn{{{num_columns}}}{{c}}{{{prefix}{eval_method}}} \\\\"
                 )
                 processed_lines.append(multicolumn_line)
-                # Add midrule after the evaluation header
+                # Add midrule after the evaluation_label header
                 processed_lines.append("\\midrule")
 
                 # Keep the data row without the first column
