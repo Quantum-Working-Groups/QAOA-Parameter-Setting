@@ -1,6 +1,6 @@
 from typing import cast
 
-from qaoa_parameter_setting.utils.types import MethodJSON
+from .types import MethodConfigJSON, MethodJSON
 
 
 METHOD_ANGLE_OPT_MARKER_PLACEHOLDER = "*"
@@ -15,7 +15,6 @@ METHOD_CONFIG_TO_LABELS: dict[MethodJSON, str] = cast(
         #
         # 2. Fixed Angle
         "FA_no_opt.json": f"Fixed Angle{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
-        "FA_noOpt.json": f"Fixed Angle{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
         "FA_opt.json": f"Fixed Angle{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         #
         # 3. Fixed Angle with Aer
@@ -45,7 +44,6 @@ METHOD_CONFIG_TO_LABELS: dict[MethodJSON, str] = cast(
         #
         # 7. Trotterised Quantum Annealing
         "TQA_no_opt.json": "TQA",
-        "TQA_noOpt.json": "TQA",
         "TQA_opt.json": f"TQA{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         "TQAAer_opt.json": f"TQA{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         # Virtual method for the zeroth iteration of TQAAer. No angle optimisation
@@ -69,10 +67,10 @@ OPT_TO_NO_OPT_MAPPING = {
     # Known mappings between Opt and No-Opt methods.
     "FA_MPS_opt.json": "FA_MPS_no_opt.json",
     "FA_PP_opt.json": "FA_PP_no_opt.json",
-    "FA_SV_opt.json": "FA_SV_noOpt.json",
+    "FA_SV_opt.json": "FA_SV_no_opt.json",
     "TQA_MPS_opt.json": "TQA_MPS_no_opt.json",
     "TQA_PP_opt.json": "TQA_PP_no_opt.json",
-    "TQA_SV_opt.json": "TQA_SV_noOpt.json",
+    "TQA_SV_opt.json": "TQA_SV_no_opt.json",
     # These no-opt methods don't exist, but we give them names anyway.
     "FA_MPSAer_opt.json": "FA_MPSAer_no_opt.json",
     "TQA_MPSAer_opt.json": "TQA_MPSAer_no_opt.json",
@@ -81,4 +79,33 @@ OPT_TO_NO_OPT_MAPPING = {
 
 
 Unoptimised versions are stored in the zeroth iteration of results for the optimised version.
+"""
+
+TRAINER_CONFIG_EQUIVALENT_MAPPINGS: dict[str, MethodConfigJSON] = {
+    # Mappings from mislabelled trainer config strings to their correct versions.
+    # These handle inconsistent naming conventions where underscores were omitted.
+    #
+    # angleOpt -> angle_opt
+    "LR_MPSAer_angleOpt.json": MethodConfigJSON("LR_MPSAer_angle_opt.json"),
+    "LR_MPS_angleOpt.json": MethodConfigJSON("LR_MPS_angle_opt.json"),
+    "LR_PP_angleOpt.json": MethodConfigJSON("LR_PP_angle_opt.json"),
+    "LR_SV_angleOpt.json": MethodConfigJSON("LR_SV_angle_opt.json"),
+    #
+    # noOpt -> no_opt
+    # FA
+    "FA_MPSAer_noOpt.json": MethodConfigJSON("FA_MPSAer_no_opt.json"),
+    "FA_MPS_noOpt.json": MethodConfigJSON("FA_MPS_no_opt.json"),
+    "FA_PP_noOpt.json": MethodConfigJSON("FA_PP_no_opt.json"),
+    "FA_SV_noOpt.json": MethodConfigJSON("FA_SV_no_opt.json"),
+    # TQA
+    "TQA_MPSAer_noOpt.json": MethodConfigJSON("TQA_MPSAer_no_opt.json"),
+    "TQA_MPS_noOpt.json": MethodConfigJSON("TQA_MPS_no_opt.json"),
+    "TQA_PP_noOpt.json": MethodConfigJSON("TQA_PP_no_opt.json"),
+    "TQA_SV_noOpt.json": MethodConfigJSON("TQA_SV_no_opt.json"),
+}
+"""Mapping from mislabelled trainer config strings to their correct versions.
+
+This handles inconsistent naming conventions in trainer config filenames where
+underscores were omitted (e.g., 'angleOpt' instead of 'angle_opt', 'noOpt'
+instead of 'no_opt'). Used to normalize config names when loading results.
 """

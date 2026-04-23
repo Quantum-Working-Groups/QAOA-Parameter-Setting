@@ -5,6 +5,7 @@ from .constants import (
     METHOD_CONFIG_TO_LABELS,
     METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER,
     OPT_TO_NO_OPT_MAPPING,
+    TRAINER_CONFIG_EQUIVALENT_MAPPINGS,
 )
 from .types import EvaluationType, MethodConfigJSON, MethodJSON
 
@@ -111,6 +112,32 @@ def trainer_config_to_evaluation(trainer_config: MethodConfigJSON) -> Evaluation
         return "SV"
     else:
         raise ValueError(f"Unrecognised energy evaluation for method {trainer_config}")
+
+
+def sanitize_trainer_config(trainer_config: str) -> MethodConfigJSON:
+    """Sanitize a trainer config string by correcting mislabelled variants.
+
+    This function normalizes trainer config strings that may use inconsistent
+    naming conventions (e.g., 'angleOpt' instead of 'angle_opt', 'noOpt' instead
+    of 'no_opt'). It looks up the input in the
+    TRAINER_CONFIG_EQUIVALENT_MAPPINGS dictionary and returns the correct
+    version if found, otherwise returns the input as-is.
+
+    Args:
+        trainer_config: The trainer config string, which might be mislabelled.
+
+    Returns:
+        The correct trainer config string wrapped as MethodConfigJSON.
+
+    Examples:
+        >>> sanitize_trainer_config("LR_MPS_angleOpt.json")
+        MethodConfigJSON("LR_MPS_angle_opt.json")
+        >>> sanitize_trainer_config("FA_SV_opt.json")
+        MethodConfigJSON("FA_SV_opt.json")
+    """
+    return TRAINER_CONFIG_EQUIVALENT_MAPPINGS.get(
+        trainer_config, MethodConfigJSON(trainer_config)
+    )
 
 
 def trainer_config_to_evaluation_label(trainer_config: MethodConfigJSON) -> str:
