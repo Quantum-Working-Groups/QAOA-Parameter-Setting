@@ -1,10 +1,11 @@
-"""Code to process graph instance filenames."""
+"""Utility functions to process graph instance filenames."""
 
+import re
 from collections.abc import Callable
 from os.path import basename
-import re
-from typing import Literal, NoReturn, TypeVar, overload
-
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import Literal, NoReturn, TypeVar, cast, overload
+from .types import GraphType
 
 R = TypeVar("R")
 
@@ -188,15 +189,14 @@ Returns:
     is returned instead.
 """
 
-GraphType = Literal["erdos_renyi", "random_regular", "line_to_full", "heavy_hex"]
-
 
 GRAPH_TYPE_REGEX_MAPPING: dict[GraphType, re.Pattern[str]] = {
-    "erdos_renyi": re.compile(r"erdosrenyi"),
+    "erdos_renyi": re.compile("erdosrenyi"),
     "random_regular": re.compile(r"random([\d]+)regular"),
     "heavy_hex": re.compile("heavyhex"),
-    "line_to_full": re.compile(r"swap_layers"),
+    "line_to_full": re.compile("swap_layers"),
 }
+"""Mapping of regular expressions to identify graph types in instance filenames."""
 
 
 def graph_type(path: str) -> GraphType:
@@ -233,4 +233,37 @@ def graph_type(path: str) -> GraphType:
             )
         )
     else:
-        return [k for k, _matches in matches.items() if _matches][0]
+        return cast(GraphType, [k for k, _matches in matches.items() if _matches][0])
+
+
+def sanitize_path(path: str) -> str:
+    """Sanitize a path so it is in Posix format.
+
+    Converts paths to the POSIX format using Pathlib. If the input format cannot
+    be determined, the current system's format is used.
+
+    Args:
+        path: The path to sanitize, as either a Windows path (with ``\\``) or a
+            POSIX path (with ``/``). The presence of either slashes is used to
+            determine the input path format.
+    """
+    if "\\" in path:
+        # Probably a WindowsPath, but we convert to make sure.
+        return str(PurePosixPath(PureWindowsPath(path)))
+    if "/" in path:
+        # Probably a PosixPath, but we convert to make sure.
+        return str(PurePosixPath(path))
+    # Cannot determine path type, so we try with the current system Path type.
+    return str(PurePosixPath(Path(path)))
+
+
+def sanitize_instance_key(key: str) -> str:
+    """Convert instance keys, i.e., paths, into Posix paths for consistency.
+
+    Args:
+        key: The instance key, which can be a windows or posix path.
+
+    Returns:
+        ``key`` as an equivalent posix path.
+    """
+    return sanitize_path(key)
