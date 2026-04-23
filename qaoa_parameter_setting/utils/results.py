@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 import numpy as np
 
+from .labels import sanitize_trainer_config
+
 
 def sanitize_energy(energy_val: float | None | Literal["NA"]) -> float | None:
     """Sanitize an energy value from a results dictionary.
@@ -31,7 +33,7 @@ def sanitize_energy(energy_val: float | None | Literal["NA"]) -> float | None:
 
 
 def result_contains_noopt(result: dict[str, Any]) -> bool:
-    """Returns if the given results dictionary contains a trainer whose zeroth iteration is a _noOpt run.
+    """Returns if the given results dictionary contains a trainer whose zeroth iteration is a _no_opt run.
 
     This function first checks if the trainer JSON file is a TQA or FA
     config, then it checks if _opt is in the config JSON filename. If both
@@ -41,9 +43,11 @@ def result_contains_noopt(result: dict[str, Any]) -> bool:
         result: The results dictionary.
 
     Returns:
-        True if the zeroth iteration is a _noOpt run.
+        True if the zeroth iteration is a _no_opt run.
     """
-    config: str = result["args"]["config"]
+    raw_config: str = result["args"]["config"]
+    config = sanitize_trainer_config(raw_config)
+
     parts = Path(config).parts[-1].split(".")[0].split("_")
     no_opt_matches = ["TQA", "FA", "FAAer", "TQAAer"]
     if all(x not in parts for x in no_opt_matches):
