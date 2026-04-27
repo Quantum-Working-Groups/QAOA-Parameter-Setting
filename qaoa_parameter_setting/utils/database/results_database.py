@@ -1540,7 +1540,7 @@ class ResultsDatabase:
         ] = set()
 
         for evaluation, methods_value in target_methods.items():
-            instances_value = target_instances.get(evaluation, set())
+            instances_value = target_instances.get(evaluation, None)
             if instances_value is None:
                 continue
 
