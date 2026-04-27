@@ -1,7 +1,6 @@
 """Database utilities for QAOA parameter setting results."""
 
 from .results_database import (
-    FailedConfigDict,
     MinMaxResult,
     NumNodesFilter,
     ResultsDatabase,
@@ -9,7 +8,6 @@ from .results_database import (
 
 __all__ = [
     "ResultsDatabase",
-    "FailedConfigDict",
     "MinMaxResult",
     "NumNodesFilter",
 ]

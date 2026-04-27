@@ -64,26 +64,6 @@ class MinMaxResult(TypedDict):
     time_solve_max_cut_ns: float
 
 
-class FailedConfigDict(TypedDict):
-    """Dictionary representing a failed training configuration.
-
-    The ``with_aer`` and ``evaluation`` fields are computed from the method JSON
-    filename using :meth:`ResultsDatabase.method_uses_aer` and
-    :func:`~qaoa_parameter_setting.utils.summary.utils.trainer_config_to_evaluation`.
-
-    Attributes:
-        method: Method configuration JSON filename (e.g., "FA_MPS_opt.json").
-        depth: QAOA depth.
-        instance: Instance filename (e.g., "001_12nodes_4swap_layers.json").
-        reason: Reason why this configuration and instance failed.
-    """
-
-    method: MethodConfigJSON
-    depth: int
-    instance: str
-    reason: str
-
-
 class ResultsDatabase:
     """Database for storing and querying all QAOA training results.
 
@@ -277,6 +257,76 @@ class ResultsDatabase:
                             )
                         result[instance][method][depth].append(result_copy)
         return result
+
+    @staticmethod
+    def load_failed_configs_from_json(
+        filepath: str | Path,
+    ) -> dict[GraphKey, dict[MethodConfigJSON, dict[Depth, str]]]:
+        """Load failed configs from JSON file and convert string depths to integers.
+
+        When loading failed configs from JSON, depth keys are strings because JSON
+        doesn't support integer keys. This method loads the file and converts them
+        to integers.
+
+        Args:
+            filepath: Path to the JSON file containing failed configs.
+
+        Returns:
+            Failed configs dict with integer depth keys.
+
+        Example:
+            >>> failed_configs = ResultsDatabase.load_failed_configs_from_json("failed_runs.json")
+            >>> # Now pass failed_configs to get_missing_configs()
+            >>> missing = db.get_missing_configs(
+            ...     target_methods=methods,
+            ...     target_instances=instances,
+            ...     target_depths=[1, 2, 3],
+            ...     failed_configs=failed_configs
+            ... )
+        """
+        filepath = Path(filepath)
+        with filepath.open("r") as f:
+            json_data = json.load(f)
+
+        # Convert string depths to integers
+        return {
+            instance: {
+                method: {int(depth): reason for depth, reason in depths.items()}
+                for method, depths in methods.items()
+            }
+            for instance, methods in json_data.items()
+        }
+
+    @staticmethod
+    def save_failed_configs_to_json(
+        failed_configs: dict[GraphKey, dict[MethodConfigJSON, dict[Depth, str]]],
+        filepath: str | Path,
+    ) -> None:
+        """Save failed configs to JSON file, converting integer depths to strings.
+
+        JSON doesn't support integer keys, so depths are converted to strings
+        before saving.
+
+        Args:
+            failed_configs: Failed configs dict with integer depth keys.
+            filepath: Path where the JSON file should be saved.
+
+        Example:
+            >>> failed_configs = {
+            ...     "instance1.json": {
+            ...         "method1.json": {
+            ...             1: "reason1",
+            ...             2: "reason2"
+            ...         }
+            ...     }
+            ... }
+            >>> ResultsDatabase.save_failed_configs_to_json(failed_configs, "failed_runs.json")
+        """
+        filepath = Path(filepath)
+
+        # We don't convert integer depths to strings as json.dump does that for us.
+        with filepath.open("w") as f:
+            json.dump(failed_configs, f, indent=2)
 
     @property
     def data(
@@ -1616,7 +1666,7 @@ class ResultsDatabase:
                 GraphKey,
             ]
         ],
-        failed_configs: list[FailedConfigDict] | None,
+        failed_configs: dict[GraphKey, dict[MethodConfigJSON, dict[Depth, str]]] | None,
     ) -> set[
         tuple[
             EvaluationType | tuple[Literal["MPS"], bool],
@@ -1630,7 +1680,7 @@ class ResultsDatabase:
         Args:
             missing: Set of missing configurations.
             failed_set: Set of failed configurations.
-            failed_configs: Optional list of failed configuration dictionaries.
+            failed_configs: Optional dictionary mapping GraphKey -> MethodConfigJSON -> Depth -> reason.
 
         Returns:
             Set of configurations to remove (those that can be derived).
@@ -1768,7 +1818,8 @@ class ResultsDatabase:
             EvaluationType, set[GraphKey] | dict[bool, set[GraphKey]]
         ],
         target_depths: Iterable[Depth],
-        failed_configs: list[FailedConfigDict] | None = None,
+        failed_configs: dict[GraphKey, dict[MethodConfigJSON, dict[Depth, str]]]
+        | None = None,
         with_derived_configs: bool = False,
     ) -> dict[
         EvaluationType | tuple[Literal["MPS"], bool],
@@ -1788,9 +1839,12 @@ class ResultsDatabase:
                 - A set of instance names (for SV and PP evaluations)
                 - A dict mapping with_aer (bool) to sets of instance names (for MPS)
             target_depths: Iterable of depths to check.
-            failed_configs: Optional list of FailedConfigDict representing failed runs.
+            failed_configs: Optional dictionary mapping GraphKey -> MethodConfigJSON -> Depth -> reason.
                 Configurations matching these failed runs will be excluded from the
                 returned missing configurations. If None, no failed configs are filtered.
+                Note: Depths must be integers. When loading from JSON, use
+                :meth:`load_failed_configs_from_json` to load and convert string depths to integers,
+                as JSON doesn't support integer keys in dictionaries.
             with_derived_configs: If False (default), filters out missing configurations
                 that can be derived from other configurations. For example, if method A
                 can be derived from method B, and both are missing, only B will be returned
@@ -1827,23 +1881,21 @@ class ResultsDatabase:
             ]
         ] = set()
         if failed_configs is not None:
-            for failed in failed_configs:
-                method = failed["method"]
-                depth = failed["depth"]
-                instance = failed["instance"]
+            for instance, methods_dict in failed_configs.items():
+                for method, depths_dict in methods_dict.items():
+                    for depth, reason in depths_dict.items():
+                        # Extract evaluation and with_aer from the method name
+                        evaluation = utils.labels.trainer_config_to_evaluation(method)
+                        with_aer = utils.labels.method_uses_aer(method)
 
-                # Extract evaluation and with_aer from the method name
-                evaluation = utils.labels.trainer_config_to_evaluation(method)
-                with_aer = utils.labels.method_uses_aer(method)
+                        # Determine eval_key based on evaluation type
+                        # For MPS, we need to distinguish between Aer and non-Aer
+                        if evaluation == "MPS":
+                            eval_key = (evaluation, with_aer)
+                        else:
+                            eval_key = cast(EvaluationType, evaluation)
 
-                # Determine eval_key based on evaluation type
-                # For MPS, we need to distinguish between Aer and non-Aer
-                if evaluation == "MPS":
-                    eval_key = (evaluation, with_aer)
-                else:
-                    eval_key = cast(EvaluationType, evaluation)
-
-                failed_set.add((eval_key, method, depth, instance))
+                        failed_set.add((eval_key, method, depth, instance))
 
         # Track which target methods and instances we've seen in the database
         # Keys are (eval_key, method) or (eval_key, instance), values are booleans
