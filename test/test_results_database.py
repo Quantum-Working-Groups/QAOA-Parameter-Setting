@@ -345,9 +345,7 @@ class TestFailedConfigsJsonMethods(unittest.TestCase):
     def test_save_creates_valid_json(self):
         """Test that saved file is valid JSON with string keys."""
         failed_configs = {
-            "instance1.json": {
-                "method1.json": {1: "reason1", 2: "reason2"}
-            }
+            "instance1.json": {"method1.json": {1: "reason1", 2: "reason2"}}
         }
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -586,7 +584,7 @@ class TestToDataFrame(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "test.json",
                 "train_duration": 1.5,
-                "metadata": {"iteration": "0"},
+                "metadata": {"iteration": "0", "evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 17, 12, 0, 0),
                 "result_key_index": 0,
             }
@@ -605,6 +603,7 @@ class TestToDataFrame(unittest.TestCase):
             "trainer",
             "evaluation",
             "evaluation_label",
+            "evaluator",
             "method_label",
             "with_aer",
             "source_file",
@@ -613,6 +612,10 @@ class TestToDataFrame(unittest.TestCase):
             "result_index",
             "run_datetime",
             "result_key_index",
+            "mps_bond_dimension",
+            "mps_threshold",
+            "pp_max_weight",
+            "pp_min_abs_coeff",
         ]
 
         for col in expected_columns:
@@ -643,7 +646,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "test1.json",
                 "train_duration": 1.5,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 17, 12, 0, 0),
                 "result_key_index": 0,
             }
@@ -661,7 +664,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "test2.json",
                 "train_duration": 2.0,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 17, 13, 0, 0),
                 "result_key_index": 0,
             }
@@ -680,7 +683,11 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "test3.json",
                 "train_duration": 1.5,
-                "metadata": {},
+                "metadata": {
+                    "evaluator": "MPSEvaluator",
+                    "mps_bond_dimension": 20,
+                    "mps_threshold": 1e-6,
+                },
                 "run_datetime": datetime(2026, 4, 17, 14, 0, 0),
                 "result_key_index": 0,
             }
@@ -731,7 +738,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "old.json",
                 "train_duration": 1.0,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 1, 12, 0, 0),  # Older
                 "result_key_index": 0,
             },
@@ -744,7 +751,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "new.json",
                 "train_duration": 1.0,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(
                     2026, 4, 17, 12, 0, 0
                 ),  # Newer - should be selected
@@ -773,7 +780,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "iter2.json",
                 "train_duration": 1.0,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 17, 12, 0, 0),
                 "result_key_index": 2,  # Higher index
             },
@@ -786,7 +793,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "iter0.json",
                 "train_duration": 1.0,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 17, 12, 0, 0),
                 "result_key_index": 0,  # Lower index - should be selected
             },
@@ -830,7 +837,11 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "test.json",
                 "train_duration": 1.0,
-                "metadata": {},
+                "metadata": {
+                    "evaluator": "PPEvaluator",
+                    "pp_max_weight": 4,
+                    "pp_min_abs_coeff": 0.01,
+                },
                 "run_datetime": datetime(2026, 4, 17, 12, 0, 0),
                 "result_key_index": 0,
             }
@@ -857,7 +868,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "test.json",
                 "train_duration": 1.0,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 17, 12, 0, 0),
                 "result_key_index": 0,
             }

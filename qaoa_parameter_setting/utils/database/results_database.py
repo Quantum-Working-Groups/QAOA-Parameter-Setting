@@ -375,11 +375,6 @@ class ResultsDatabase:
         new_db._additional_methods = self._additional_methods.copy()
         return new_db
 
-    def config_path_to_config(self, config_path: str) -> MethodConfigJSON:
-        """Convert a string path to a config/method to just the config name."""
-        basename = utils.instance.sanitize_path(config_path).split("/")[-1]
-        return utils.labels.sanitize_trainer_config(basename)
-
     @staticmethod
     def extract_datetime_from_filename(filename: str) -> datetime:
         """Extract datetime from JSON filename.
@@ -463,7 +458,7 @@ class ResultsDatabase:
             "method_label": method_label,
         }
 
-    def _process_noopt_variant(
+    def _process_derived_variant(
         self,
         result: dict[str, Any],
         results: list[
@@ -480,10 +475,12 @@ class ResultsDatabase:
         filename: str,
         run_datetime: datetime,
     ) -> None:
-        """Process and add no-opt variant from opt method's zeroth iteration.
+        """Process and add derived variant from method's zeroth iteration.
 
-        This method extracts the zeroth iteration from an optimized training run
-        and adds it as a separate no-opt configuration to the database.
+        This method extracts the zeroth iteration from a training run and adds it
+        as a separate derived configuration to the database. Handles two types:
+        1. no_opt variants from TQA/FA/TQAAer/FAAer _opt methods
+        2. non-angle variants from LR _angle_opt methods
 
         Args:
             result: Loaded JSON data from the file.
@@ -491,20 +488,19 @@ class ResultsDatabase:
             filename: Path to the result file.
             run_datetime: Datetime when the run was performed.
         """
-        opt_config: str = result["args"]["config"].replace("\\\\", "/")
-        no_opt_config = self.config_path_to_config(
-            utils.labels.trainer_config_to_no_opt(
-                self.config_path_to_config(opt_config)
-            )
+        raw_config: str = result["args"]["config"]
+        opt_config = utils.labels.config_path_to_config(raw_config)
+        derived_config = utils.labels.config_path_to_config(
+            utils.results.get_derived_config(opt_config)
         )
-        # Track the no-opt config in additional_methods
-        self._additional_methods.add(no_opt_config)
+        # Track the derived config in additional_methods
+        self._additional_methods.add(derived_config)
 
         self.populate_results(
             result,
             results,
             filename=filename,
-            config=no_opt_config,
+            config=derived_config,
             # Only use the zeroth entry.
             iter_keys=["0"],
             run_datetime=run_datetime,
@@ -516,7 +512,9 @@ class ResultsDatabase:
         result: dict[str, Any],
         iter_keys: list[str] | None = None,
     ) -> None:
-        config: MethodConfigJSON = self.config_path_to_config(result["args"]["config"])
+        config: MethodConfigJSON = utils.labels.config_path_to_config(
+            result["args"]["config"]
+        )
 
         warning_suffix = f" for file {filename!r}"
 
@@ -555,10 +553,12 @@ class ResultsDatabase:
         self._source_files.add(filename)
 
         # Get the energy evaluation methodology
-        config: MethodConfigJSON = self.config_path_to_config(result["args"]["config"])
+        config: MethodConfigJSON = utils.labels.config_path_to_config(
+            result["args"]["config"]
+        )
 
         try:
-            evaluation = utils.labels.trainer_config_to_evaluation(config)
+            _ = utils.labels.trainer_config_to_evaluation(config)
         except ValueError as e:
             raise ValueError(
                 f"Unrecognised energy evaluation in {filename} for method {config}"
@@ -604,10 +604,10 @@ class ResultsDatabase:
         # This ensures configs with data but no method JSON file are included
         self._additional_methods.add(config)
 
-        # Check if we need to add the zeroth iteration, for opt to no-opt
-        # trainer mappings.
-        if utils.results.result_contains_noopt(result):
-            self._process_noopt_variant(result, results, filename, run_datetime)
+        # Check if we need to add the zeroth iteration for derived variants
+        # (no_opt from opt, or non-angle from angle_opt)
+        if utils.results.result_contains_derived(result):
+            self._process_derived_variant(result, results, filename, run_datetime)
 
         # Process all results
         for (
@@ -626,6 +626,40 @@ class ResultsDatabase:
 
             # Get cached config info for sub_config (may differ from main config)
             sub_config_info = self._get_config_info(sub_config)
+
+            # Double check evaluator information
+            evaluator = metadata["evaluator"]
+            if evaluator in ["MPSEvaluator", "MPSAerEvaluator"]:
+                if (
+                    "mps_bond_dimension" not in metadata
+                    or "mps_threshold" not in metadata
+                ):
+                    warnings.warn(
+                        "MPS result does not contain expected evaluator metadata. "
+                        + f"result_key_index={result_key_index}, source_file={filename}"
+                    )
+            elif evaluator == "PPEvaluator":
+                if (
+                    "pp_max_weight" not in metadata
+                    or "pp_min_abs_coeff" not in metadata
+                ):
+                    warnings.warn(
+                        "PP result does not contain expected evaluator metadata. "
+                        + f"result_key_index={result_key_index}, source_file={filename}"
+                    )
+            elif evaluator == "UNKNOWN":
+                warnings.warn(
+                    f"Encountered unknown evaluator for result_key_index={result_key_index}, source_file={filename}"
+                )
+            elif evaluator is None:
+                # We may get here if we do not evaluate the data. Double check
+                # that this only happens for FixedAngleConjecture trainers.
+                if trainer != "FixedAngleConjecture":
+                    warnings.warn(
+                        f"Encountered result with no evaluator for result_key_index={result_key_index}, source_file={filename}"
+                    )
+            else:
+                pass
 
             # Add this result to the list (defaultdict auto-creates nested structure)
             self._data[graph][sub_config][depth].append(
@@ -808,6 +842,105 @@ class ResultsDatabase:
                 pass
         return iterations
 
+    def extract_evaluator_metadata_from_result(
+        self,
+        result: dict[str, Any],
+        trainer_config_hint: MethodConfigJSON,
+    ) -> dict[str, Any]:
+        """Extract metadata about the evaluator from the given results dictionary.
+
+        The following "normalised" metadata entries will always be present for
+        the following evaluation methods.
+
+        - All: ``evaluator``, being the string identifying the specific
+          evaluator used, e.g., ``"MPSAerEvaluator"`` or ``"PPEvaluator"``.
+        - SV: No metadata is extracted.
+        - PP: ``pp_max_weight`` and ``pp_min_abs_coeff``.
+        - MPS: ``mps_bond_dimension`` and ``mps_threshold``. ``mps_bond_dimension`` is taken
+          from ``matrix_product_state_max_bond_dimension`` for Qiskit Aer and
+          ``bond_dim_circuit`` for Quimb. ``mps_threshold`` is taken from
+          ``matrix_product_state_truncation_threshold`` for Qiskit Aer and
+          ``threshold_circuit`` for Quimb.
+
+        Args:
+            result: Results dictionary from a training JSON file.
+            trainer_config_hint: The trainer_config filename, used to determine
+                the evaluation method and expected evaluator data in ``result``.
+
+        Returns:
+            A dictionary containing the evaluator config. If the evaluation
+            method could not be determined, the dictionary is empty. If an
+            expected parameter was not found, its value is ``None``.
+        """
+        evaluation = utils.labels.trainer_config_to_evaluation(trainer_config_hint)
+        with_aer = utils.labels.method_uses_aer(trainer_config_hint)
+        trainer_config = result.get("trainer", {})
+        if not isinstance(trainer_config, dict):
+            return {}
+
+        evaluator = trainer_config.get("evaluator", {})
+        if isinstance(evaluator, str):
+            evaluator_config = trainer_config.get("evaluator_init", {})
+        elif evaluator is not None:
+            evaluator_config = evaluator
+            evaluator = evaluator_config.get("name", "UNKNOWN")
+        else:
+            # We may not have an evaluator if we don't run an evaluation. Set it to None.
+            evaluator = None
+            evaluator_config = {}
+        if evaluation == "SV":
+            # We don't have anything for Statevector simulators.
+            return {"evaluator": evaluator, **evaluator_config}
+        elif evaluation == "PP":
+            return {
+                # Normalised entries
+                "evaluator": evaluator,
+                "pp_max_weight": evaluator_config.get("pp_kwargs", {}).get(
+                    "max_weight", None
+                ),
+                "pp_min_abs_coeff": evaluator_config.get("pp_kwargs", {}).get(
+                    "min_abs_coeff", None
+                ),
+                # Other entries
+                "max_freq": evaluator_config.get("pp_kwargs", {}).get("max_freq", None),
+                "max_sins": evaluator_config.get("pp_kwargs", {}).get("max_sins", None),
+            }
+        elif evaluation == "MPS":
+            if with_aer:
+                # Qiskit Aer
+                mps_init_args = evaluator_config.get("mps_init_args", {})
+                return {
+                    # Normalised MPS entries
+                    "evaluator": evaluator,
+                    "mps_bond_dimension": mps_init_args.get(
+                        "matrix_product_state_max_bond_dimension", None
+                    ),
+                    "mps_threshold": mps_init_args.get(
+                        "matrix_product_state_truncation_threshold", None
+                    ),
+                    # Qiskit Aer entries
+                    "matrix_product_state_max_bond_dimension": mps_init_args.get(
+                        "matrix_product_state_max_bond_dimension", None
+                    ),
+                    "matrix_product_state_truncation_threshold": mps_init_args.get(
+                        "matrix_product_state_truncation_threshold", None
+                    ),
+                }
+            # Quimb
+            return {
+                # Normalised MPS entries
+                "evaluator": evaluator,
+                "mps_bond_dimension": evaluator_config.get("bond_dim_circuit", None),
+                "mps_threshold": evaluator_config.get("threshold_circuit", None),
+                # Quimb entries
+                "threshold_circuit": evaluator_config.get("threshold_circuit", None),
+                "bond_dim_circuit": evaluator_config.get("bond_dim_circuit", None),
+                "threshold_cost": evaluator_config.get("threshold_cost", None),
+                "bond_dim_mpo": evaluator_config.get("bond_dim_mpo", None),
+            }
+        # We shouldn't get here. But we return an empty metadata dict anyway.
+        return {"evaluator": evaluator}
+
     def populate_results(
         self,
         result: dict[str, Any],
@@ -851,7 +984,7 @@ class ResultsDatabase:
             __config: str | None = result.get("args", {}).get("config", None)
             if __config is None:
                 raise ValueError("Cannot determine config.")
-            config = self.config_path_to_config(__config)
+            config = utils.labels.config_path_to_config(__config)
 
         for key in __iter_keys:
             sub_result = result[key]
@@ -876,7 +1009,7 @@ class ResultsDatabase:
             # For recursive trainers, scale by 1/10 and add to parent index
             current_key_index = parent_key_index + float(key)
 
-            if trainer == "RecursionTrainer":
+            if trainer in ["RecursionTrainer", "RecursiveTransitionStates"]:
                 # Recursively process sub-results with scaled key indices
                 self.populate_results(
                     sub_result,
@@ -902,6 +1035,7 @@ class ResultsDatabase:
             metadata = {
                 "iteration": key,
                 "version": version,
+                **self.extract_evaluator_metadata_from_result(sub_result, config),
             }
 
             result_data.append(
@@ -1408,7 +1542,7 @@ class ResultsDatabase:
                                     )
                                     missing_minmax_warned.add(instance)
                         # For non-MC problems, approximation_ratio is np.nan (no warning)
-
+                        _metadata = result["metadata"]
                         records.append(
                             {
                                 "instance": instance,
@@ -1425,15 +1559,24 @@ class ResultsDatabase:
                                 "evaluation_label": result.get(
                                     "evaluation_label", None
                                 ),
+                                "evaluator": _metadata["evaluator"],
                                 "method_label": result.get("method_label", None),
                                 "with_aer": result["with_aer"],
                                 "source_file": result["source_file"],
                                 "train_duration": result["train_duration"],
-                                "metadata": result["metadata"],
+                                "metadata": _metadata,
                                 "result_index": idx,
                                 "run_datetime": result["run_datetime"],
                                 "result_key_index": result["result_key_index"],
                                 "approximation_ratio": approx_ratio,
+                                "mps_bond_dimension": _metadata.get(
+                                    "mps_bond_dimension", None
+                                ),
+                                "mps_threshold": _metadata.get("mps_threshold", None),
+                                "pp_max_weight": _metadata.get("pp_max_weight", None),
+                                "pp_min_abs_coeff": _metadata.get(
+                                    "pp_min_abs_coeff", None
+                                ),
                             }
                         )
 

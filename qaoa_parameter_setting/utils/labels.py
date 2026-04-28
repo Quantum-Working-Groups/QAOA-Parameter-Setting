@@ -8,7 +8,7 @@ from .constants import (
     TRAINER_CONFIG_EQUIVALENT_MAPPINGS,
 )
 from .types import EvaluationType, MethodConfigJSON, MethodJSON
-
+from .instance import sanitize_path
 
 def format_method_label_to(
     label: str,
@@ -139,6 +139,10 @@ def sanitize_trainer_config(trainer_config: str) -> MethodConfigJSON:
         trainer_config, MethodConfigJSON(trainer_config)
     )
 
+def config_path_to_config(config_path:str)->MethodConfigJSON:
+    """Convert a string path to a config/method to just the config name."""
+    basename = sanitize_path(config_path).split("/")[-1]
+    return sanitize_trainer_config(basename)
 
 def trainer_config_to_evaluation_label(trainer_config: MethodConfigJSON) -> str:
     """Extract the evaluation method label from a trainer config.
