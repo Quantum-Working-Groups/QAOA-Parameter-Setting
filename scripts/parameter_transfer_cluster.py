@@ -53,7 +53,7 @@ def to_list(x):
 
 
 
-database_path = "./optimized_angles_database_L2F.json"
+database_path = "./optimized_angles_database_HH.json"
 with open(database_path, "r", encoding="utf-8") as f:
     db = json.load(f)
 
@@ -140,5 +140,5 @@ for a, items in groups.items():
         }
 
 
-with open("optimized_angles_database_L2F_cluster.json", "w", encoding="utf-8") as f:
+with open("optimized_angles_database_HH_cluster.json", "w", encoding="utf-8") as f:
     json.dump(new_db, f, indent=2, ensure_ascii=False)
