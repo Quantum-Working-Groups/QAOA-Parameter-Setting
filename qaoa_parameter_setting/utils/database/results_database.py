@@ -661,6 +661,14 @@ class ResultsDatabase:
             else:
                 pass
 
+            # Double check trainer information
+            if trainer == "FixedAngleConjecture":
+                if "fa_degree" not in metadata:
+                    warnings.warn(
+                        "FA result does not contain expected trainer metadata. "
+                        + f"result_key_index={result_key_index}, source_file={filename}"
+                    )
+
             # Add this result to the list (defaultdict auto-creates nested structure)
             self._data[graph][sub_config][depth].append(
                 {
@@ -941,6 +949,28 @@ class ResultsDatabase:
         # We shouldn't get here. But we return an empty metadata dict anyway.
         return {"evaluator": evaluator}
 
+    def extract_trainer_metadata_from_result(
+        self,
+        result: dict[str, Any],
+        trainer_config_hint: MethodConfigJSON,
+    ) -> dict[str, Any]:
+        """Extract trainer metadata from the given result dictionary.
+
+        Args:
+            result: The result dictionary.
+            trainer_config_hint: The config for the given result. May be used to
+                help identify which metadata to extract.
+
+        Returns:
+            A dictionary of metadata, with at least the ``"trainer"`` entry,
+            being the trainer name.
+        """
+        metadata = {}
+        metadata["trainer"] = result["trainer"]["trainer_name"]
+        if metadata["trainer"] == "FixedAngleConjecture":
+            metadata["fa_degree"] = result.get("degree", -1)
+        return metadata
+
     def populate_results(
         self,
         result: dict[str, Any],
@@ -1036,6 +1066,7 @@ class ResultsDatabase:
                 "iteration": key,
                 "version": version,
                 **self.extract_evaluator_metadata_from_result(sub_result, config),
+                **self.extract_trainer_metadata_from_result(sub_result, config),
             }
 
             result_data.append(
@@ -1577,6 +1608,7 @@ class ResultsDatabase:
                                 "pp_min_abs_coeff": _metadata.get(
                                     "pp_min_abs_coeff", None
                                 ),
+                                "fa_degree": _metadata.get("fa_degree", None),
                             }
                         )
 
