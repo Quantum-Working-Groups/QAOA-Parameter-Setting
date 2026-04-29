@@ -8,6 +8,7 @@ from .constants import (
     TRAINER_CONFIG_EQUIVALENT_MAPPINGS,
 )
 from .types import EvaluationType, MethodConfigJSON, MethodJSON
+from .instance import sanitize_path
 
 
 def format_method_label_to(
@@ -74,10 +75,10 @@ def trainer_config_to_method_label(config: MethodConfigJSON | MethodJSON) -> str
     try:
         # This will fail if config is a MethodJSON, i.e., without an evaluation
         # string.
-        return method_to_method_label(trainer_config_to_method(config))
+        return method_to_method_label(trainer_config_to_method(config))  # pyright: ignore[reportArgumentType]
     except ValueError:
         # If we get here, config is most likely a MethodJSON.
-        return method_to_method_label(config)
+        return method_to_method_label(config)  # pyright: ignore[reportArgumentType]
 
 
 def method_uses_aer(method: MethodConfigJSON | MethodJSON) -> bool:
@@ -138,6 +139,24 @@ def sanitize_trainer_config(trainer_config: str) -> MethodConfigJSON:
     return TRAINER_CONFIG_EQUIVALENT_MAPPINGS.get(
         trainer_config, MethodConfigJSON(trainer_config)
     )
+
+
+def config_path_to_config(config_path: str) -> MethodConfigJSON:
+    """Convert a string path to a config/method to just the config name.
+
+    Note that this function does not validate that the config filename is valid,
+    only that it is a valid filename.
+
+    Args:
+        config_path: A path to a method config file, to be sanitized and
+            converted into a valid :type:`MethodConfigJSON`.
+
+    Returns:
+        The name of a method config JSON file, without relative or absolute
+        paths.
+    """
+    basename = sanitize_path(config_path).split("/")[-1]
+    return sanitize_trainer_config(basename)
 
 
 def trainer_config_to_evaluation_label(trainer_config: MethodConfigJSON) -> str:

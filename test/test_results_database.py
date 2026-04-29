@@ -8,10 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from qaoa_parameter_setting.utils.database.results_database import (
-    FailedConfigDict,
-    ResultsDatabase,
-)
+from qaoa_parameter_setting.utils.database.results_database import ResultsDatabase
 
 # Ignore warnings that the min-/max-cut data is missing for all tests
 pytestmark = pytest.mark.filterwarnings(
@@ -254,22 +251,133 @@ class TestSaveAndLoad(unittest.TestCase):
             Path(temp_file).unlink()
 
 
-class TestFailedConfigDict(unittest.TestCase):
-    """Test suite for FailedConfigDict TypedDict."""
+class TestFailedConfigsJsonMethods(unittest.TestCase):
+    """Test suite for load_failed_configs_from_json and save_failed_configs_to_json static methods."""
 
-    def test_failed_config_dict_structure(self):
-        """Test that FailedConfigDict has correct structure."""
-        config: FailedConfigDict = {
-            "evaluation": "SV",
-            "method": "FA_SV_opt.json",
-            "depth": 5,
-            "instance": "test_instance.json",
+    def test_load_converts_string_depths_to_integers(self):
+        """Test that load_failed_configs_from_json converts string depth keys to integers."""
+        # Create test JSON file
+        json_data = {
+            "instance1.json": {
+                "method1.json": {
+                    "1": "reason1",
+                    "2": "reason2",
+                    "10": "reason10",
+                }
+            }
         }
 
-        self.assertEqual(config["evaluation"], "SV")
-        self.assertEqual(config["method"], "FA_SV_opt.json")
-        self.assertEqual(config["depth"], 5)
-        self.assertEqual(config["instance"], "test_instance.json")
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(json_data, f)
+            temp_file = f.name
+
+        try:
+            result = ResultsDatabase.load_failed_configs_from_json(temp_file)
+
+            # Check that depths are now integers
+            self.assertIn(1, result["instance1.json"]["method1.json"])
+            self.assertIn(2, result["instance1.json"]["method1.json"])
+            self.assertIn(10, result["instance1.json"]["method1.json"])
+
+            # Check that string keys are gone
+            self.assertNotIn("1", result["instance1.json"]["method1.json"])
+            self.assertNotIn("2", result["instance1.json"]["method1.json"])
+        finally:
+            Path(temp_file).unlink()
+
+    def test_load_preserves_reasons(self):
+        """Test that failure reasons are preserved when loading."""
+        json_data = {
+            "instance1.json": {
+                "method1.json": {
+                    "5": "No FA for P=5 and avg. degree. 8.",
+                }
+            }
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(json_data, f)
+            temp_file = f.name
+
+        try:
+            result = ResultsDatabase.load_failed_configs_from_json(temp_file)
+
+            self.assertEqual(
+                result["instance1.json"]["method1.json"][5],
+                "No FA for P=5 and avg. degree. 8.",
+            )
+        finally:
+            Path(temp_file).unlink()
+
+    def test_save_and_load_roundtrip(self):
+        """Test that data can be saved and loaded correctly."""
+        failed_configs = {
+            "instance1.json": {
+                "method1.json": {1: "reason1", 2: "reason2"},
+                "method2.json": {3: "reason3"},
+            },
+            "instance2.json": {
+                "method3.json": {4: "reason4"},
+            },
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            temp_file = f.name
+
+        try:
+            # Save
+            ResultsDatabase.save_failed_configs_to_json(failed_configs, temp_file)
+
+            # Load
+            loaded = ResultsDatabase.load_failed_configs_from_json(temp_file)
+
+            # Verify data matches
+            self.assertEqual(len(loaded), 2)
+            self.assertEqual(len(loaded["instance1.json"]), 2)
+            self.assertEqual(len(loaded["instance2.json"]), 1)
+            self.assertEqual(loaded["instance1.json"]["method1.json"][1], "reason1")
+            self.assertEqual(loaded["instance1.json"]["method1.json"][2], "reason2")
+            self.assertEqual(loaded["instance1.json"]["method2.json"][3], "reason3")
+            self.assertEqual(loaded["instance2.json"]["method3.json"][4], "reason4")
+        finally:
+            Path(temp_file).unlink()
+
+    def test_save_creates_valid_json(self):
+        """Test that saved file is valid JSON with string keys."""
+        failed_configs = {
+            "instance1.json": {"method1.json": {1: "reason1", 2: "reason2"}}
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            temp_file = f.name
+
+        try:
+            ResultsDatabase.save_failed_configs_to_json(failed_configs, temp_file)
+
+            # Load with standard json.load to verify format
+            with open(temp_file) as f:
+                json_data = json.load(f)
+
+            # Verify keys are strings in JSON
+            self.assertIn("1", json_data["instance1.json"]["method1.json"])
+            self.assertIn("2", json_data["instance1.json"]["method1.json"])
+            self.assertNotIn(1, json_data["instance1.json"]["method1.json"])
+        finally:
+            Path(temp_file).unlink()
+
+    def test_handles_empty_dict(self):
+        """Test handling of empty dictionary."""
+        failed_configs = {}
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            temp_file = f.name
+
+        try:
+            ResultsDatabase.save_failed_configs_to_json(failed_configs, temp_file)
+            loaded = ResultsDatabase.load_failed_configs_from_json(temp_file)
+            self.assertEqual(loaded, {})
+        finally:
+            Path(temp_file).unlink()
 
 
 if __name__ == "__main__":
@@ -476,7 +584,7 @@ class TestToDataFrame(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "test.json",
                 "train_duration": 1.5,
-                "metadata": {"iteration": "0"},
+                "metadata": {"iteration": "0", "evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 17, 12, 0, 0),
                 "result_key_index": 0,
             }
@@ -495,6 +603,7 @@ class TestToDataFrame(unittest.TestCase):
             "trainer",
             "evaluation",
             "evaluation_label",
+            "evaluator",
             "method_label",
             "with_aer",
             "source_file",
@@ -503,6 +612,10 @@ class TestToDataFrame(unittest.TestCase):
             "result_index",
             "run_datetime",
             "result_key_index",
+            "mps_bond_dimension",
+            "mps_threshold",
+            "pp_max_weight",
+            "pp_min_abs_coeff",
         ]
 
         for col in expected_columns:
@@ -533,7 +646,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "test1.json",
                 "train_duration": 1.5,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 17, 12, 0, 0),
                 "result_key_index": 0,
             }
@@ -551,7 +664,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "test2.json",
                 "train_duration": 2.0,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 17, 13, 0, 0),
                 "result_key_index": 0,
             }
@@ -570,7 +683,11 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "test3.json",
                 "train_duration": 1.5,
-                "metadata": {},
+                "metadata": {
+                    "evaluator": "MPSEvaluator",
+                    "mps_bond_dimension": 20,
+                    "mps_threshold": 1e-6,
+                },
                 "run_datetime": datetime(2026, 4, 17, 14, 0, 0),
                 "result_key_index": 0,
             }
@@ -621,7 +738,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "old.json",
                 "train_duration": 1.0,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 1, 12, 0, 0),  # Older
                 "result_key_index": 0,
             },
@@ -634,7 +751,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "new.json",
                 "train_duration": 1.0,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(
                     2026, 4, 17, 12, 0, 0
                 ),  # Newer - should be selected
@@ -663,7 +780,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "iter2.json",
                 "train_duration": 1.0,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 17, 12, 0, 0),
                 "result_key_index": 2,  # Higher index
             },
@@ -676,7 +793,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "iter0.json",
                 "train_duration": 1.0,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 17, 12, 0, 0),
                 "result_key_index": 0,  # Lower index - should be selected
             },
@@ -720,7 +837,11 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "test.json",
                 "train_duration": 1.0,
-                "metadata": {},
+                "metadata": {
+                    "evaluator": "PPEvaluator",
+                    "pp_max_weight": 4,
+                    "pp_min_abs_coeff": 0.01,
+                },
                 "run_datetime": datetime(2026, 4, 17, 12, 0, 0),
                 "result_key_index": 0,
             }
@@ -747,7 +868,7 @@ class TestOnlyBestParameters(unittest.TestCase):
                 "with_aer": False,
                 "source_file": "test.json",
                 "train_duration": 1.0,
-                "metadata": {},
+                "metadata": {"evaluator": "StatevectorEvaluator"},
                 "run_datetime": datetime(2026, 4, 17, 12, 0, 0),
                 "result_key_index": 0,
             }

@@ -40,6 +40,7 @@ METHOD_CONFIG_TO_LABELS: dict[MethodJSON, str] = cast(
         #
         # 6. Transition States
         "RTS.json": "Recursive TS",
+        "RTSAer.json": "Recursive TS",
         "TS.json": "Recursive TS",
         #
         # 7. Trotterised Quantum Annealing
