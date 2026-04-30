@@ -13,14 +13,14 @@ METHOD_CONFIG_TO_LABELS: dict[MethodJSON, str] = cast(
         "F.json": f"Fourier{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         "FAer.json": f"Fourier{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         #
-        # 2. Fixed Angle
-        "FA_no_opt.json": f"Fixed Angle{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
-        "FA_opt.json": f"Fixed Angle{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
+        # 2. Fixed Angles
+        "FA_no_opt.json": f"Fixed Angles{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
+        "FA_opt.json": f"Fixed Angles{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         #
-        # 3. Fixed Angle with Aer
-        "FAAer_opt.json": f"Fixed Angle{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
+        # 3. Fixed Angles with Aer
+        "FAAer_opt.json": f"Fixed Angles{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         # Virtual method for the zeroth iteration. No angle optimisation
-        "FAAer_no_opt.json": f"Fixed Angle{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
+        "FAAer_no_opt.json": f"Fixed Angles{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
         #
         # 4. Interp
         # The parameters are optimised in the default files.
