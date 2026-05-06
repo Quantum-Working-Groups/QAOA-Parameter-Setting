@@ -7,8 +7,8 @@ from .constants import (
     OPT_TO_NO_OPT_MAPPING,
     TRAINER_CONFIG_EQUIVALENT_MAPPINGS,
 )
-from .types import EvaluationType, MethodConfigJSON, MethodJSON
 from .instance import sanitize_path
+from .types import EvaluationType, MethodConfigJSON, MethodJSON
 
 
 def format_method_label_to(

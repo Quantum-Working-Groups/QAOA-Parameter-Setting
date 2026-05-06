@@ -34,6 +34,9 @@ METHOD_CONFIG_TO_LABELS: dict[MethodJSON, str] = cast(
         # _opt.json: The angles are not optimised, only the two linear-ramp parameters.
         "LR_opt.json": "Linear Ramp",
         "LRAer_opt.json": "Linear Ramp",
+        # _no_opt.json: The angles and parameters are not optimised. The initial parameters are used.
+        "LR_no_opt.json": f"Linear Ramp{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
+        "LRAer_no_opt.json": f"Linear Ramp{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
         # _angle_opt.json: The angles ARE optimised.
         "LR_angle_opt.json": f"Linear Ramp{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         "LRAer_angle_opt.json": f"Linear Ramp{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
