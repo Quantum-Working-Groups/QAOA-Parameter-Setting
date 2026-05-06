@@ -710,7 +710,12 @@ def formatted_styler_for(
             for _method_json in _methods_to_include
         ]
         # Remove duplicates while preserving order, then sort
-        _row_index = pd.MultiIndex.from_tuples(sorted(list(dict.fromkeys(_row_tuples))))
+        _row_index = pd.MultiIndex.from_tuples(
+            sorted(
+                list(dict.fromkeys(_row_tuples)),
+                key=lambda x: (x[0], utils.labels.method_sort_key(x[1])),  # pyright: ignore[reportArgumentType]
+            )
+        )
     else:
         _row_index = pivot.index.sort_values()
 

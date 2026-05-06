@@ -1,5 +1,6 @@
 """Utility functions for handling/parsing results."""
 
+from enum import Enum
 from typing import Any, Literal
 
 import numpy as np
@@ -32,19 +33,52 @@ def sanitize_energy(energy_val: float | None | Literal["NA"]) -> float | None:
         raise ValueError(f"Unknown energy value type: {type(energy_val)!r}")
 
 
-def __config_derived_flags(config: MethodConfigJSON) -> tuple[bool, bool, bool, bool]:
+class DerivedType(Enum):
+    ZEROTH_ITER_IS_NOOPT = 0
+    """If the zeroth trainer optimised result is a ``_no_opt`` variant."""
+    ZEROTH_ITER_IS_LR_OPT = 1
+    """If the zeroth trainer optimised result is a ``LR_*_opt`` variant."""
+    INITIAL_PARAMS_LR_NO_OPT = 2
+    """If the zeroth trainer initial parameters are a ``LR_*_no_opt`` variant."""
+
+
+def __config_derived_flags(config: MethodConfigJSON) -> list[DerivedType]:
     config_lower = config.lower()
-    is_no_opt_acronym = any(
+
+    # 1. If the zeroth trainer's optimised result is a _no_opt variant of this config.
+    is_zeroth_iter_noopt = False
+    if any(
         term.lower() in config_lower for term in ["TQA_", "FA_", "TQAAer_", "FAAer_"]
-    )
-    is_opt_config = (
-        "_opt" in config_lower
-        and "_angle_opt" not in config_lower
-        and "_no_opt" not in config_lower
-    )
-    is_angle_opt_acronym = any(term.lower() in config_lower for term in ["LR_"])
-    is_angle_opt_config = "_angle_opt" in config_lower
-    return (is_no_opt_acronym, is_opt_config, is_angle_opt_acronym, is_angle_opt_config)
+    ):
+        if (
+            "_opt" in config_lower
+            and "_angle_opt" not in config_lower
+            and "_no_opt" not in config_lower
+        ):
+            is_zeroth_iter_noopt = True
+
+    # 2.If the zeroth trainer's optimised result is an LR_*_opt variant of this config.
+    is_zeroth_iter_lr_opt = False
+    if (
+        any(term.lower() in config_lower for term in ["LR_"])
+        and "_angle_opt" in config_lower
+    ):
+        is_zeroth_iter_lr_opt = True
+
+    # 3. If the initial parameters of the zeroth trainer's result is an LR_*_no_opt variant of this config.
+    is_inital_param_lr_no_opt = False
+    if any(term.lower() in config_lower for term in ["LR_"]):
+        is_inital_param_lr_no_opt = True
+
+    # Return all applicable DerivedType flags.
+    derived_flags: list[DerivedType] = []
+    if is_zeroth_iter_noopt:
+        derived_flags.append(DerivedType.ZEROTH_ITER_IS_NOOPT)
+    if is_zeroth_iter_lr_opt:
+        derived_flags.append(DerivedType.ZEROTH_ITER_IS_LR_OPT)
+    if is_inital_param_lr_no_opt:
+        derived_flags.append(DerivedType.INITIAL_PARAMS_LR_NO_OPT)
+    return derived_flags
 
 
 def result_contains_derived(result: dict[str, Any]) -> bool:
@@ -63,50 +97,43 @@ def result_contains_derived(result: dict[str, Any]) -> bool:
     """
     raw_config: str = result["args"]["config"]
     config = config_path_to_config(raw_config)
-    is_no_opt_acronym, is_opt_config, is_angle_opt_acronym, is_angle_opt_config = (
-        __config_derived_flags(config)
-    )
-
-    # We check for two things:
-    # 1. Can we derive a _no_opt config from this config.
-    # 2. Can we derive an _opt config from this _angle_opt config.
-
-    # Check for no_opt derivation (TQA/FA/TQAAer/FAAer with _opt)
-    if is_no_opt_acronym and is_angle_opt_acronym:
-        raise ValueError(
-            f"Result cannot contain both _no_opt and _(angle_)opt derived methods: config={config!r}."
-        )
-    if is_no_opt_acronym and is_opt_config:
-        return True
-
-    # Check for angle_opt derivation (LR with _angle_opt)
-    if is_angle_opt_acronym and is_angle_opt_config:
-        return True
-
-    return False
+    derived_types = __config_derived_flags(config)
+    return len(derived_types) > 0
 
 
-def get_derived_config(config: str) -> str:
-    """Get the derived config name from an angle_opt or opt config.
+def get_derived_configs(config: str) -> list[tuple[str, DerivedType]]:
+    """Get the derived config names from an angle_opt or opt config.
 
     For TQA/FA/TQAAer/FAAer with _opt, returns the no_opt variant.
     For LR with angle_opt, returns the non-angle variant (e.g., LR_MPS_opt.json).
+    For LR with either angle_opt or opt, returns the unoptimised initial parameters (e.g., LR_MPS_no_opt.json).
 
     Args:
         config: The trainer config filename.
 
     Returns:
-        The derived config name, or None if no derivation applies.
+        A list of derived config names. If no derived configs exist, the list is empty.
     """
 
     config = config_path_to_config(config)
-    is_no_opt_acronym, is_opt_config, is_angle_opt_acronym, is_angle_opt_config = (
-        __config_derived_flags(config)
-    )
+    derived_types = __config_derived_flags(config)
 
-    if is_no_opt_acronym and is_opt_config:
-        return config.replace("_opt", "_no_opt")
-    if is_angle_opt_acronym and is_angle_opt_config:
-        return config.replace("_angle_opt", "_opt")
+    derived_configs: list[tuple[str, DerivedType]] = []
 
-    raise ValueError(f"Config {config!r} does not contain a derived method.")
+    if len(derived_types) == 0:
+        raise ValueError(f"Config {config!r} does not contain a derived method.")
+
+    for derived_type in derived_types:
+        if derived_type == DerivedType.ZEROTH_ITER_IS_NOOPT:
+            derived_configs.append((config.replace("_opt", "_no_opt"), derived_type))
+        if derived_type == DerivedType.ZEROTH_ITER_IS_LR_OPT:
+            derived_configs.append((config.replace("_angle_opt", "_opt"), derived_type))
+        if derived_type == DerivedType.INITIAL_PARAMS_LR_NO_OPT:
+            derived_configs.append(
+                (
+                    config.replace("_angle_opt", "_opt").replace("_opt", "_no_opt"),
+                    derived_type,
+                )
+            )
+
+    return derived_configs

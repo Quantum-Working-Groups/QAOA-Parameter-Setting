@@ -490,21 +490,42 @@ class ResultsDatabase:
         """
         raw_config: str = result["args"]["config"]
         opt_config = utils.labels.config_path_to_config(raw_config)
-        derived_config = utils.labels.config_path_to_config(
-            utils.results.get_derived_config(opt_config)
-        )
-        # Track the derived config in additional_methods
-        self._additional_methods.add(derived_config)
+        derived_configs = [
+            (utils.labels.config_path_to_config(_config), _derived_type)
+            for _config, _derived_type in utils.results.get_derived_configs(opt_config)
+        ]
 
-        self.populate_results(
-            result,
-            results,
-            filename=filename,
-            config=derived_config,
-            # Only use the zeroth entry.
-            iter_keys=["0"],
-            run_datetime=run_datetime,
-        )
+        # Iterate over the derived configurations and add them to the database.
+        for _derived_config, _derived_type in derived_configs:
+            # If the zeroth iteration is a no_opt variant, add it to the database.
+            if _derived_type in [
+                utils.results.DerivedType.ZEROTH_ITER_IS_LR_OPT,
+                utils.results.DerivedType.ZEROTH_ITER_IS_NOOPT,
+            ]:
+                self.populate_results(
+                    result,
+                    results,
+                    filename=filename,
+                    config=_derived_config,
+                    # Only use the zeroth entry.
+                    iter_keys=["0"],
+                    run_datetime=run_datetime,
+                )
+            elif _derived_type == utils.results.DerivedType.INITIAL_PARAMS_LR_NO_OPT:
+                self.populate_results(
+                    result,
+                    results,
+                    filename=filename,
+                    config=_derived_config,
+                    # Only use the zeroth entry.
+                    iter_keys=["0"],
+                    history_keys=[0],
+                    run_datetime=run_datetime,
+                )
+            else:
+                raise NotImplementedError(
+                    f"Unexpected derived-config type {repr(_derived_type)} for file {filename}."
+                )
 
     def _validate_result_file(
         self,
@@ -660,6 +681,14 @@ class ResultsDatabase:
                     )
             else:
                 pass
+
+            # Double check trainer information
+            if trainer == "FixedAngleConjecture":
+                if "fa_degree" not in metadata:
+                    warnings.warn(
+                        "FA result does not contain expected trainer metadata. "
+                        + f"result_key_index={result_key_index}, source_file={filename}"
+                    )
 
             # Add this result to the list (defaultdict auto-creates nested structure)
             self._data[graph][sub_config][depth].append(
@@ -941,6 +970,28 @@ class ResultsDatabase:
         # We shouldn't get here. But we return an empty metadata dict anyway.
         return {"evaluator": evaluator}
 
+    def extract_trainer_metadata_from_result(
+        self,
+        result: dict[str, Any],
+        trainer_config_hint: MethodConfigJSON,
+    ) -> dict[str, Any]:
+        """Extract trainer metadata from the given result dictionary.
+
+        Args:
+            result: The result dictionary.
+            trainer_config_hint: The config for the given result. May be used to
+                help identify which metadata to extract.
+
+        Returns:
+            A dictionary of metadata, with at least the ``"trainer"`` entry,
+            being the trainer name.
+        """
+        metadata = {}
+        metadata["trainer"] = result["trainer"]["trainer_name"]
+        if metadata["trainer"] == "FixedAngleConjecture":
+            metadata["fa_degree"] = result.get("degree", -1)
+        return metadata
+
     def populate_results(
         self,
         result: dict[str, Any],
@@ -957,6 +1008,7 @@ class ResultsDatabase:
         ],
         filename: str | None = None,
         iter_keys: Iterable[str] | None = None,
+        history_keys: Iterable[int] | None = None,
         config: MethodConfigJSON | None = None,
         run_datetime: datetime | None = None,
         parent_key_index: float = 0.0,
@@ -966,13 +1018,19 @@ class ResultsDatabase:
         Args:
             result: Input results dictionary to process.
             result_data: Output list of results.
-            filename: Optional name of original JSON file for results, for warnings.
-                If None, warnings will not refer to a specific file.
+            filename: Optional name of original JSON file for results, for
+                warnings. If None, warnings will not refer to a specific file.
             iter_keys: Iterable of keys for sub-results. If None, generated with
                 :meth:`get_iter_keys`.
+            history_keys: Iterable of indices for optimisation history. Only the
+                best energy from this history is used. QAOA angles and training
+                duration are still for the entire trainer, only the energy is
+                filtered. If None, only the final, optimised result is used
             config: Optional method config. If None, extracted from result.
-            run_datetime: Datetime when the run was performed. Must be provided (extracted from filename).
-            parent_key_index: Key index from parent recursion level. Used for recursive trainers.
+            run_datetime: Datetime when the run was performed. Must be provided
+                (extracted from filename).
+            parent_key_index: Key index from parent recursion level. Used for
+                recursive trainers.
         """
         if run_datetime is None:
             raise ValueError("run_datetime must be provided")
@@ -985,6 +1043,8 @@ class ResultsDatabase:
             if __config is None:
                 raise ValueError("Cannot determine config.")
             config = utils.labels.config_path_to_config(__config)
+
+        __history_keys = list(history_keys) if history_keys is not None else None
 
         for key in __iter_keys:
             sub_result = result[key]
@@ -1017,17 +1077,47 @@ class ResultsDatabase:
                     filename=filename,
                     config=config,
                     run_datetime=run_datetime,
+                    history_keys=history_keys,
                     # We divide by ten so that indexes are the decimal digits in the parent_key_index.
                     parent_key_index=current_key_index / 10.0,
                 )
 
-            qaoa_angles = sub_result["optimized_qaoa_angles"]
-            energy = utils.results.sanitize_energy(energy_val=sub_result["energy"])
+            # We keep optimised_qaoa_angles, even when using history_keys, as we
+            # cannot get the QAOA angles from the history; only the parameters.
+            optimised_qaoa_angles = sub_result["optimized_qaoa_angles"]
             duration = float(sub_result["train_duration"])
 
             # Ensure length of 2p
-            if len(qaoa_angles) % 2 != 0:
+            if len(optimised_qaoa_angles) % 2 != 0:
                 continue
+
+            # Get the energy, filtering using __history_keys if necessary.
+            if __history_keys is None:
+                # We aren't filtering, so we take the best one
+                energy = utils.results.sanitize_energy(energy_val=sub_result["energy"])
+            else:
+                # We are filtering, so we get the maximum energy at indices
+                # __history_keys. If there are none, we set energy to None. We
+                # also filter __history_keys to ignore indices that fall outside
+                # of the energy history list.
+                _energy_history: list[float] = sub_result["energy_history"]
+                _local_history_keys = [
+                    idx for idx in __history_keys if idx < len(_energy_history)
+                ]
+
+                # Filter the energies and handle the case where there are no
+                # remaining energies or they are all None.
+                _filtered_energies = [
+                    utils.results.sanitize_energy(_energy_history[idx])
+                    for idx in _local_history_keys
+                ]
+                _filtered_energies = [
+                    _energy for _energy in _filtered_energies if _energy is not None
+                ]
+                if len(_filtered_energies) == 0:
+                    energy = None
+                else:
+                    energy = max(_filtered_energies)
 
             # Store metadata
             # NOTE: Additional metadata fields can be added here in the future
@@ -1036,11 +1126,12 @@ class ResultsDatabase:
                 "iteration": key,
                 "version": version,
                 **self.extract_evaluator_metadata_from_result(sub_result, config),
+                **self.extract_trainer_metadata_from_result(sub_result, config),
             }
 
             result_data.append(
                 (
-                    qaoa_angles,
+                    optimised_qaoa_angles,
                     energy,
                     trainer,
                     duration,
@@ -1577,6 +1668,7 @@ class ResultsDatabase:
                                 "pp_min_abs_coeff": _metadata.get(
                                     "pp_min_abs_coeff", None
                                 ),
+                                "fa_degree": _metadata.get("fa_degree", None),
                             }
                         )
 
