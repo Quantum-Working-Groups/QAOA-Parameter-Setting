@@ -13,7 +13,9 @@ from qaoa_parameter_setting.transpilation.make_qaoa_circuits import make_qaoa_ci
 class HarwareExecutor:
     """Class to prepare circuits from results with standardized metadata."""
 
-    def __init__(self, instance_name: str, short_name: str, folder: str, base_path: str="."):
+    def __init__(
+        self, instance_name: str, short_name: str, folder: str, base_path: str = "."
+    ):
         """
         Args:
             instance_name: This is the name of a graph in the repository. For example,
@@ -49,7 +51,7 @@ class HarwareExecutor:
                     f"Graph instance {graph_file} from the file {save_file} "
                     f"does not matche the anticipated file {self._instance_name}"
                 )
-        
+
         # Extract the parameters into a more manageable format
         # For each result file and depth we want to find the best parameters
         # that the method reported.
@@ -61,12 +63,12 @@ class HarwareExecutor:
             summary = []
             manager.populate_results(res, summary)
             summary_dict = dict()
-            
+
             for _res in summary:
                 # Keep track of the location where the data came from
                 data_entry = (_res[0], _res[1], _res[2], res["args"]["save_file"])
 
-                depth = len(_res[0])//2
+                depth = len(_res[0]) // 2
                 if depth not in summary_dict:
                     summary_dict[depth] = data_entry
                 else:
@@ -79,16 +81,26 @@ class HarwareExecutor:
                             summary_dict[depth] = data_entry
 
             self._all_methods_summary[method] = summary_dict
-    
-    def manual_add_parameters(self, qaoa_angles, energy, method: str, file_name: str ="no file"):
-        """Allows us to inject parameters into the _all_methods_summary to construct PUBs."""
-        if len(qaoa_angles) % 2 !=0:
-            raise ValueError("QAOA angles should have length 2.")
-        
-        depth = len(qaoa_angles) // 2
-        self._all_methods_summary[method] = {depth: (qaoa_angles, energy, method, file_name)}
 
-    def make_sampler_pub(self, backend, qaoa_depth: int, problem_class: str="maxcut", meas_threshold: float=0.0):
+    def manual_add_parameters(
+        self, qaoa_angles, energy, method: str, file_name: str = "no file"
+    ):
+        """Allows us to inject parameters into the _all_methods_summary to construct PUBs."""
+        if len(qaoa_angles) % 2 != 0:
+            raise ValueError("QAOA angles should have length 2.")
+
+        depth = len(qaoa_angles) // 2
+        self._all_methods_summary[method] = {
+            depth: (qaoa_angles, energy, method, file_name)
+        }
+
+    def make_sampler_pub(
+        self,
+        backend,
+        qaoa_depth: int,
+        problem_class: str = "maxcut",
+        meas_threshold: float = 0.0,
+    ):
         """Prepares the payload for the Sampler."""
         self._circuit = None
         self._swap_circuit = None
@@ -96,18 +108,19 @@ class HarwareExecutor:
 
         # Create a template circuit into which we will assign the parameters.
         self._circuit, self._swap_circuit = make_qaoa_circuit(
-            file_name, 
-            problem_class=problem_class, 
-            reps=qaoa_depth, 
-            backend=backend, 
+            file_name,
+            problem_class=problem_class,
+            reps=qaoa_depth,
+            backend=backend,
             meas_threshold=meas_threshold,
         )
 
         sampler_pub = []
         for method, res in self._all_methods_summary.items():
             if qaoa_depth in res:
-
-                mcirc = self._circuit.assign_parameters(res[qaoa_depth][0], inplace=False)
+                mcirc = self._circuit.assign_parameters(
+                    res[qaoa_depth][0], inplace=False
+                )
                 mcirc.metadata["method"] = method
                 mcirc.metadata["params"] = res[qaoa_depth][0]
                 mcirc.metadata["eval_energy"] = res[qaoa_depth][1]
@@ -119,7 +132,7 @@ class HarwareExecutor:
 
         return sampler_pub
 
-    def save_result_summary(self, job, overwrite: bool=False):
+    def save_result_summary(self, job, overwrite: bool = False):
         """Make a serializable object of the results that we can json dump."""
         result = job.result()
         job_id = job.job_id()
@@ -138,7 +151,7 @@ class HarwareExecutor:
 
         # Save to JSon in data/ folder
         file_short_name = result[0].metadata["circuit_metadata"]["short_name"]
-        name = f"{file_short_name}_{job_id}.json" 
+        name = f"{file_short_name}_{job_id}.json"
 
         file_name = f"{self._base_path}/data/hardware/{self._folder}/{name}"
 
@@ -150,7 +163,9 @@ class HarwareExecutor:
 
         return result_summary
 
-    def plot_qaoa_angles(self, qaoa_depth, fig=None, axis1=None, axis2=None, plot_args: dict=None):
+    def plot_qaoa_angles(
+        self, qaoa_depth, fig=None, axis1=None, axis2=None, plot_args: dict = None
+    ):
         """Plot the QAOA betas in axis1 and the gammas in axis2"""
 
         if fig is None or axis1 is None or axis2 is None:
@@ -163,18 +178,17 @@ class HarwareExecutor:
         for method, res in self._all_methods_summary.items():
             if qaoa_depth not in res:
                 continue
-        
+
             angles = res[qaoa_depth][0]
-        
+
             p = len(angles) // 2
             axis1.plot(angles[:p], label=method, **plot_args.get(method, dict()))
             axis2.plot(angles[p:], label=method, **plot_args.get(method, dict()))
-
 
         axis1.set_xlabel("QAOA depth")
         axis2.set_xlabel("QAOA depth")
 
         axis1.set_ylabel(r"$\beta$")
         axis2.set_ylabel("$\\gamma$")
-        
+
         return fig, axis1, axis2
