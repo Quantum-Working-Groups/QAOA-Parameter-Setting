@@ -42,9 +42,9 @@ METHOD_CONFIG_TO_LABELS: dict[MethodJSON, str] = cast(
         "LRAer_angle_opt.json": f"Linear Ramp{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         #
         # 6. Transition States
-        "RTS.json": "Recursive TS",
-        "RTSAer.json": "Recursive TS",
-        "TS.json": "Recursive TS",
+        "RTS.json": f"Recursive TS{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
+        "RTSAer.json": f"Recursive TS{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
+        "TS.json": f"Recursive TS{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         #
         # 7. Trotterised Quantum Annealing
         "TQA_no_opt.json": "TQA",
