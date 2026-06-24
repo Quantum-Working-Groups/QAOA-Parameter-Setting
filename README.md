@@ -19,6 +19,7 @@ QAOA is a type of variational quantum algorithm for solving combinatorial optimi
 - **Interpolation (INTERP) and Fourier (F)**: Recursive interpolation and optimization in the Fourier basis, based on [Zhou et al.](https://journals.aps.org/prx/abstract/10.1103/PhysRevX.10.021067)
 - **Transition States (TS)**: Recursive greedy initialization via transition states, based on [Sack et al.](https://journals.aps.org/pra/abstract/10.1103/PhysRevA.107.062404)
 - **Linear ramps method (LR)**: quantum annealing based method with two linear ramps, based on [Montanez-Barrera and Michielsen](https://www.nature.com/articles/s41534-025-01082-1)
+- **Parameter Transfer (PT)**: transfer of QAOA angles from small-scale problems to utility-scale problems, based on numerical observations of angles clustering for similar graphs. 
 
 Each method is tested with different quantum state evaluators:
 - **SV**: Statevector simulation (exact, valid only for small-scale)
