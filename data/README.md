@@ -1,11 +1,15 @@
 # Results and data
 
-This folder contains any data and results that we obtaine.
-It contains the following three sub-folders
+This folder contains all the data and results that we obtained.
+It contains the following sub-folders
 
+* **evaluation_times**: a folder containing the results of a study for energy evaluation times by MPS, MPSAer, and PP. 
 * **examples**: a folder with example data to show data structures in the result files.
-* **hardware**: a folder to contain data from quantum hardware, such as samples from QAOA circuits.
-* **simulations**: a folder to contain the results from QAOA parameter training runs done on classical hardware.
+* **hardware**: a folder containing data from quantum hardware, such as samples from QAOA circuits.
+* **minmax_cuts**: a folder containing the optimal minimum and maximum cuts for different instances, solved classically. 
+* **reference**: a folder containing the results of the classical reference method (SDP).
+* **simulations**: a folder containing the results from simulations on solving the LABS problem with the QAOA angle setting methods assessed
+* **training**: a folder containing the results of applying the QAOA angle setting methods to MaxCut and MIS in the different instances, including the databases used in parameter transfer.
 
 ## Naming convention
 
@@ -23,8 +27,7 @@ For example, the four classes of graphs we have are abbriviated as follows
 * `003N18L2S12` for `003_18nodes_12swap_layers.json`. Here, the last `12` represents the 12 swap layers.
 * `005N35R8R` for `005_35nodes_random8regular.json`.
 
-The **`class`** in the file format is either `MC` for maximum-cut problems or `MISX` for maximum independent set where `X` is the weight of the penalty.
-Typically, we will set a weight of 2 for this penalty, i.e., `MIS2`.
+The **`class`** in the file format is either `MC` for maximum-cut problems or `MIS` for maximum independent set. We set a weight of 2 for the MIS penalty. 
 
 The **`trainer`** corresponds to the trainer method with the same abbreviation. The abbreviations are the following
 
