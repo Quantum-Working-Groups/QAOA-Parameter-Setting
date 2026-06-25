@@ -1,9 +1,9 @@
 # Instances
-## 🎯 Overview
+## Description
 
 The instances in this directory serve as benchmarks for evaluating QAOA parameter-setting methods across different graph topologies and scales. They range from small-scale graphs (10 nodes) suitable for exact statevector simulation to utility-scale graphs (100+ nodes) requiring approximate methods like MPS or Pauli Propagation. For each graph type and specific graph properties, there is 10 different, randomly generated instances.
 
-## 📊 Instance Types
+## Instance Types
 
 ### Random Regular Graphs
 
@@ -38,4 +38,4 @@ Graphs matching IBM quantum hardware topology, enabling better execution on quan
 Graphs with controlled connectivity ranging from linear chains to fully connected graphs. Random ±1 weights
 
 **Naming pattern:** `{idx}_{n}nodes_{k}swap_layers.json`
-- Example: `000_100nodes_2swap_layers.json` (100-node graph, 2 swap layers, seed 0)
+- Example: `000_100nodes_2swap_layers.json` (100-node graph, 2 swap layers)

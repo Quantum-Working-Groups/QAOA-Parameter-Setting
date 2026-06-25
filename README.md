@@ -1,16 +1,19 @@
 # Setting angles in quantum approximate optimization at utility-scale
-
-This repository contains the data, experimental results, and code to produce figures, tables, and data management for the paper **"Setting angles in quantum approximate optimization at utility-scale"** ([arXiv:2606.05311](https://arxiv.org/pdf/2606.05311)). The code implementing the angle-setting strategies can be found in ([qaoa_training_pipeline](https://github.com/qiskit-community/qaoa_training_pipeline))
-
 We investigate the performance of various Quantum Approximate Optimization Algorithm (QAOA) angle-setting strategies across different problem instances, including utility-scale graphs.
 
-## 📋 Table of Contents
+[![arXiv](https://img.shields.io/badge/arXiv-2606.05311-B31B1B.svg)](https://arxiv.org/abs/2606.05311)
+[![](https://img.shields.io/badge/GitHub-qaoa--training--pipeline-181717?logo=github)](https://github.com/qiskit-community/qaoa_training_pipeline)
+
+## Description
+This repository contains the data, experimental results, and code to produce figures, tables, and data management for the paper **Setting angles in quantum approximate optimization at utility-scale**.
+
+##  Table of Contents
 
 - [Overview](#overview)
 - [High-level Repository Structure](#high-level-repository-structure)
 - [Related](#related)
 
-## 🎯 Overview
+##  Overview
 
 QAOA is a type of variational quantum algorithm for solving combinatorial optimization problems. A critical challenge is determining the optimal angles for the quantum circuit. The following strategies have been benchmark within this work:
 
@@ -26,7 +29,7 @@ Each method is tested with different quantum state evaluators:
 - **MPS**: Matrix Product State simulation (approximate, valid for utility-scale)
 - **PP**: Pauli Propagation (approximate, vaid for utility-scale large-scale)
 
-## 📁 High-level Repository Structure
+##  High-level Repository Structure
 
 ```
 QAOA-Parameter-Setting/
@@ -46,7 +49,7 @@ QAOA-Parameter-Setting/
 └── test/                # Various test files
 ```
 
-## 🔗 Related
+##  Related
 
 - [qaoa_training_pipeline](../qaoa_training_pipeline): Core training infrastructure
 - Paper: [arXiv:2606.05311](https://arxiv.org/pdf/2606.05311)
