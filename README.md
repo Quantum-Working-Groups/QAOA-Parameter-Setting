@@ -1,5 +1,5 @@
 # Setting angles in quantum approximate optimization at utility-scale
-We investigate the performance of various Quantum Approximate Optimization Algorithm (QAOA) angle-setting strategies across different problem instances, including utility-scale graphs.
+We investigate the performance of various Quantum Approximate Optimization Algorithm (QAOA) angle-setting strategies across different problem instances including utility-scale graphs, both in simulation and on IBM's superconducting hardware, 
 
 [![arXiv](https://img.shields.io/badge/arXiv-2606.05311-B31B1B.svg)](https://arxiv.org/abs/2606.05311)
 [![](https://img.shields.io/badge/GitHub-qaoa--training--pipeline-181717?logo=github)](https://github.com/qiskit-community/qaoa_training_pipeline)
@@ -10,24 +10,65 @@ This repository contains the data, experimental results, and code to produce fig
 ##  Table of Contents
 
 - [Overview](#overview)
+- [Angle-setting Strategies](#angle-setting-strategies)
+- [Energy Evaluation Methods](#energy-evaluation-methods)
+- [Problems studied](#problems-studied)
+- [Graph instances](#graph-instances)
 - [High-level Repository Structure](#high-level-repository-structure)
-- [Related](#related)
+- [Folder descriptions](#folder-descriptions)
+- [Exploring the data](#exploring-the-data)
+- [Contributors and acknowledgments](#contributors-and-acknowledgments)
+- [Citation](#citation)
+- [License](#license)
+- [Contact](#contact)
 
 ##  Overview
 
-QAOA is a type of variational quantum algorithm for solving combinatorial optimization problems. A critical challenge is determining the optimal angles for the quantum circuit. The following strategies have been benchmark within this work:
+A critical challenge in QAOA is determining the optimal angles to achieve good performance, and there is multiple angle-setting methods available. However, it is unclear which methods are best and under which conditions or for which problems. This work provides practical guidance for practitioners on how to set QAOA angles by:
+- Benchmark of 44 different combinations of angle-setting strategies and energy evaluation methods
+- 4 different graph families: Random regular, Erdos-Renyi, line-based, and heavy hex. 
+- Hardware evaluation and statistical analysis of the achieved performance in hardware
+- Parameter transfer from small-scale to utility scale instances
+- Resource and cost analysis of the different methods and running the overall pipeline. 
 
-- **Fixed-Angle Conjecture (FA)**: fixed angles strategy extracted from [Wurtz & Love](https://journals.aps.org/pra/abstract/10.1103/PhysRevA.103.042612), [Wurtz & Lykov](https://journals.aps.org/pra/abstract/10.1103/PhysRevA.104.052419), [fixed-angle-QAOA](https://github.com/danlkv/fixed-angle-QAOA)
-- **Trotterized Quantum Annealing (TQA)**: quantum annealing method with a linear ramp based on [Sack et al.](https://quantum-journal.org/papers/q-2021-07-01-491/)
-- **Interpolation (INTERP) and Fourier (F)**: Recursive interpolation and optimization in the Fourier basis, based on [Zhou et al.](https://journals.aps.org/prx/abstract/10.1103/PhysRevX.10.021067)
-- **Transition States (TS)**: Recursive greedy initialization via transition states, based on [Sack et al.](https://journals.aps.org/pra/abstract/10.1103/PhysRevA.107.062404)
-- **Linear ramps method (LR)**: quantum annealing based method with two linear ramps, based on [Montanez-Barrera and Michielsen](https://www.nature.com/articles/s41534-025-01082-1)
-- **Parameter Transfer (PT)**: transfer of QAOA angles from small-scale problems to utility-scale problems, based on numerical observations of angles clustering for similar graphs. 
+### Angle-setting Strategies
 
-Each method is tested with different quantum state evaluators:
-- **SV**: Statevector simulation (exact, valid only for small-scale)
-- **MPS**: Matrix Product State simulation (approximate, valid for utility-scale)
-- **PP**: Pauli Propagation (approximate, vaid for utility-scale large-scale)
+The following strategies have been benchmark within this work:
+
+| Method | Description | Reference |
+|----------|----------|----------|
+| Fixed-Angle Conjecture (FA) | Provides universally good angles with a guaranteed lower bound for MaxCut on random regular graphs | [Wurtz & Love](https://journals.aps.org/pra/abstract/10.1103/PhysRevA.103.042612), [Wurtz & Lykov](https://journals.aps.org/pra/abstract/10.1103/PhysRevA.104.052419), [fixed-angle-QAOA](https://github.com/danlkv/fixed-angle-QAOA) |
+| Trotterized Quantum Annealing (TQA)   | Quantum annealing with one-slope linear schedule performed with QAOA via Trotterization and time discretization  | [Sack et al.](https://quantum-journal.org/papers/q-2021-07-01-491/)     |
+| INTERP (I)     | Recursive interpolation and optimization of the QAOA angles| [Zhou et al.](https://journals.aps.org/prx/abstract/10.1103/PhysRevX.10.021067)     |
+| FOURIER (F) | Recursive optimization of the QAOA angles in a sine/cosine basis      | [Zhou et al.](https://journals.aps.org/prx/abstract/10.1103/PhysRevX.10.021067)     |
+| Transition States (TS) | Recursive greedy initialization via Transition States | [Sack et al.](https://journals.aps.org/pra/abstract/10.1103/PhysRevA.107.062404)     |
+| Linear ramps method (LR) | TQA with a two-slope linear schedule     | [Montanez-Barrera & Michielsen](https://www.nature.com/articles/s41534-025-01082-1)     |
+| Parameter Transfer (PT)| Transfer of QAOA angles from small-scale problems to utility-scale problems, based on numerical observations of angles clustering for similar graphs  | -     |
+
+### Energy evaluation methods
+
+Each method is tested with different energy evaluators:
+
+| Evaluator| Description |
+|----------|----------|
+| Statevector (SV)    | Exact simulation and extraction of the energy, only feasible for small-scale instances|
+| Matrix Product States (MPS) | Approximate simulation and extraction of the energy, feasible for utility-scale instances. Represents the state via tensor network with chain topology|
+| Pauli Propagation (PP)    | Approximate simulation and extraction of the energy, feasible for utility-scale instances. Computes expectation values via observable backpropagation|
+
+
+### Problems studied
+| Problem| Description |
+|----------|----------|
+| Maximum Cut (MaxCut)| Given a graph $G = (V, E)$, find the partitioning $V_0 \cap V_1 = \empty, V = V_0 \cup V_1$ such that the sum of edges between partitions is maximized.| 
+| Maximum Independent Set (MIS)|Given a graph $G = (V, E)$, find the largest $S \sub V$ such that no nodes in $S$ share an edge.|
+| Low Autocorrelation Binary Sequence (LABS)| Find a sequence $S = (s_1, s_2, ..., s_N)$, $s_i\in\{-1,+1\}$, such that the sum of squared off-peak autocorrelations is minimized. |
+### Graph instances
+| Instance Type| Description |
+|----------|----------|
+| Unweighted random regular | Unweighted random regular graph $G(n,d)$, where $n$ is the number of nodes and $d$ is the degree of each node. |
+| Erdos-Renyi | Erdos-Renyi random graph $G(n,p)$, where $n$ is the number of nodes and $p$ is the probability of an edge between any two nodes. |
+| Weighted Line-based | Built from a line graph with $n$ nodes by applying $k$ SWAP layers, and weights drawn uniformly from $\{-1,1\}. |
+| Weighted heavy-hex | Hardware native graphs, and weights drawn from $\mathcal{N}(0,1)$.
 
 ##  High-level Repository Structure
 
@@ -49,8 +90,26 @@ QAOA-Parameter-Setting/
 └── test/                # Various test files
 ```
 
-##  Related
+## Exploring the data
 
-- [qaoa_training_pipeline](../qaoa_training_pipeline): Core training infrastructure
-- Paper: [arXiv:2606.05311](https://arxiv.org/pdf/2606.05311)
+## Contributors and Acknowledgments
+
+## Citation
+If you use this data in your research, please cite:
+```
+@misc{
+  guo2026settingqaoaangles,
+  title={{Setting angles in quantum approximate optimization at utility-scale}, 
+  author={Guo, Maosheng and Diaz, Joel Jurado and Ramesh, Anurag and Haupt, Conrad J and Baiardi, Alberto and Athanasakos, Dimitrios and Sahin, M Emre and Wallis, Oscar and Pennington, George and Arenz, Christian and others},
+  year={2026},
+  eprint={2606.05311},
+  archivePrefix={arXiv},
+  primaryClass={quant-ph},
+  url={https://arxiv.org/abs/2606.05311}, 
+}
+```
+
+## License
+
+## Contact
 
