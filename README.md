@@ -59,15 +59,15 @@ Each method is tested with different energy evaluators:
 ### Problems studied
 | Problem| Description |
 |----------|----------|
-| Maximum Cut (MaxCut)| Given a graph $G = (V, E)$, find the partitioning $V_0 \cap V_1 = \empty, V = V_0 \cup V_1$ such that the sum of edges between partitions is maximized.| 
-| Maximum Independent Set (MIS)|Given a graph $G = (V, E)$, find the largest $S \sub V$ such that no nodes in $S$ share an edge.|
+| Maximum Cut (MaxCut)| Given a graph $G = (V, E)$, find the partitioning $V_0 \cap V_1 = \emptyset$, $V = V_0 \cup V_1$ such that the sum of edges between partitions is maximized.| 
+| Maximum Independent Set (MIS)|Given a graph $G = (V, E)$, find the largest $S \subseteq V$ such that no nodes in $S$ share an edge.|
 | Low Autocorrelation Binary Sequence (LABS)| Find a sequence $S = (s_1, s_2, ..., s_N)$, $s_i\in\{-1,+1\}$, such that the sum of squared off-peak autocorrelations is minimized. |
 ### Graph instances
 | Instance Type| Description |
 |----------|----------|
 | Unweighted random regular | Unweighted random regular graph $G(n,d)$, where $n$ is the number of nodes and $d$ is the degree of each node. |
 | Erdos-Renyi | Erdos-Renyi random graph $G(n,p)$, where $n$ is the number of nodes and $p$ is the probability of an edge between any two nodes. |
-| Weighted Line-based | Built from a line graph with $n$ nodes by applying $k$ SWAP layers, and weights drawn uniformly from $\{-1,1\}. |
+| Weighted Line-based | Built from a line graph with $n$ nodes by applying $k$ SWAP layers, and weights drawn uniformly from $\{-1,1\}$. |
 | Weighted heavy-hex | Hardware native graphs, and weights drawn from $\mathcal{N}(0,1)$.
 
 ##  High-level Repository Structure
