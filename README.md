@@ -91,8 +91,17 @@ QAOA-Parameter-Setting/
 ```
 
 ## Exploring the data
-
+1. Explore the instances used in this work by navigating to the instances directory ([`instances/`](./instances/)) and check its README to get to know the 4 instance types better.  
+2. Go into each of the instance types (e.g. [`instances/random_regular`](./instances/random_regular/)) to check the files defining the structure of the graphs.
+3. Explore the methods used in this work by navigating to the methods directory ([`methods/`](./methods/)) and check its README to get to know the different combinations of algorithms and energy evaluation methods.
+4. Explore the data produced in our work by navigating to the data directory ([`data/`](./data/)). Start by checking its README to get to know the format of the data files naming.
+5. Go into each of the data subfolders that group them by different types (e.g. [`data/training/random_regular`](./data/training/random_regular/)) to check the files produced by the QAOA training pipeline for each of the methods.
+6. Explore the [`paper/`](./paper/) folder to see how the plots in the paper were generated.
 ## Contributors and Acknowledgments
+This repository was created as part of the Quantum Optimization Working Group effort initiated in July 2023 by IBM Quantum and its partners.
+
+### Authors
+Maosheng Guo, Joel Jurado Diaz, Anurag Ramesh, Conrad J. Haupt, Alberto Baiardi, Dimitrios Athanasakos, M. Emre Sahin, Oscar Wallis, George Pennington, Christian Arenz, Sebastian Brandhofer, Georgios Korpas,Ieva Čepaite, J. A. Montañez-Barrera, Jakub Marecek, Davide Venturelli, Stephan Eidenbenz, David E. Bernal Neira, and Daniel J. Egger
 
 ## Citation
 If you use this data in your research, please cite:
@@ -112,4 +121,4 @@ If you use this data in your research, please cite:
 ## License
 
 ## Contact
-
+The corresponding author is Daniel J. Egger, deg@zurich.ibm.com
