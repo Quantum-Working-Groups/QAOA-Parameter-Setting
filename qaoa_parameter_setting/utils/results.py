@@ -125,7 +125,7 @@ def get_derived_configs(config: str) -> list[tuple[str, DerivedType]]:
 
     for derived_type in derived_types:
         if derived_type == DerivedType.ZEROTH_ITER_IS_NOOPT:
-            derived_configs.append((config.replace("_opt", "_no_opt"), derived_type))
+            derived_configs.append((config.replace("_opt", ""), derived_type))
         if derived_type == DerivedType.ZEROTH_ITER_IS_LR_OPT:
             derived_configs.append((config.replace("_angle_opt", "_opt"), derived_type))
         if derived_type == DerivedType.INITIAL_PARAMS_LR_NO_OPT:

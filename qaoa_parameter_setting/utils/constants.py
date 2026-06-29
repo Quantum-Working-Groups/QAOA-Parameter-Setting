@@ -97,14 +97,14 @@ OPT_TO_NO_OPT_MAPPING = {
     "FA_MPS_opt.json": "FA_MPS_no_opt.json",
     "FA_PP_opt.json": "FA_PP_no_opt.json",
     "FA_SV_opt.json": "FA_SV_no_opt.json",
-    "TQA_MPS_opt.json": "TQA_MPS_no_opt.json",
-    "TQA_PP_opt.json": "TQA_PP_no_opt.json",
-    "TQA_SV_opt.json": "TQA_SV_no_opt.json",
+    "TQA_MPS_opt.json": "TQA_MPS.json",
+    "TQA_PP_opt.json": "TQA_PP.json",
+    "TQA_SV_opt.json": "TQA_SV.json",
     # These no-opt methods don't exist, but we give them names anyway.
     "FA_MPSAer_opt.json": "FA_MPSAer_no_opt.json",
-    "TQA_MPSAer_opt.json": "TQA_MPSAer_no_opt.json",
+    "TQA_MPSAer_opt.json": "TQA_MPSAer.json",
 }
-"""Known mappings from optimised trainer configs/methods to their unoptimised versions.
+"""Known mappings from optimised trainer configs/methods to their unoptimised (no angle optimization) versions.
 
 
 Unoptimised versions are stored in the zeroth iteration of results for the optimised version.
@@ -115,10 +115,10 @@ TRAINER_CONFIG_EQUIVALENT_MAPPINGS: dict[str, MethodConfigJSON] = {
     # These handle inconsistent naming conventions where underscores were omitted.
     #
     # angleOpt -> angle_opt
-    "LR_MPSAer_angleOpt.json": MethodConfigJSON("LR_MPSAer_angle_opt.json"),
-    "LR_MPS_angleOpt.json": MethodConfigJSON("LR_MPS_angle_opt.json"),
-    "LR_PP_angleOpt.json": MethodConfigJSON("LR_PP_angle_opt.json"),
-    "LR_SV_angleOpt.json": MethodConfigJSON("LR_SV_angle_opt.json"),
+    "LR_MPSAer_angleOpt.json": MethodConfigJSON("LR_MPSAer_opt.json"),
+    "LR_MPS_angleOpt.json": MethodConfigJSON("LR_MPS_opt.json"),
+    "LR_PP_angleOpt.json": MethodConfigJSON("LR_PP_opt.json"),
+    "LR_SV_angleOpt.json": MethodConfigJSON("LR_SV_opt.json"),
     #
     # noOpt -> no_opt
     # FA
@@ -127,10 +127,10 @@ TRAINER_CONFIG_EQUIVALENT_MAPPINGS: dict[str, MethodConfigJSON] = {
     "FA_PP_noOpt.json": MethodConfigJSON("FA_PP_no_opt.json"),
     "FA_SV_noOpt.json": MethodConfigJSON("FA_SV_no_opt.json"),
     # TQA
-    "TQA_MPSAer_noOpt.json": MethodConfigJSON("TQA_MPSAer_no_opt.json"),
-    "TQA_MPS_noOpt.json": MethodConfigJSON("TQA_MPS_no_opt.json"),
-    "TQA_PP_noOpt.json": MethodConfigJSON("TQA_PP_no_opt.json"),
-    "TQA_SV_noOpt.json": MethodConfigJSON("TQA_SV_no_opt.json"),
+    "TQA_MPSAer_noOpt.json": MethodConfigJSON("TQA_MPSAer.json"),
+    "TQA_MPS_noOpt.json": MethodConfigJSON("TQA_MPS.json"),
+    "TQA_PP_noOpt.json": MethodConfigJSON("TQA_PP.json"),
+    "TQA_SV_noOpt.json": MethodConfigJSON("TQA_SV.json"),
 }
 """Mapping from mislabelled trainer config strings to their correct versions.
 
