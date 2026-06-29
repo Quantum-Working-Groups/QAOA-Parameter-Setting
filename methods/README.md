@@ -25,6 +25,20 @@ There is an example configuration file, [`example_method.json`](example_method.j
 | **MPSAer** | MPSAer (Aer-based MPS) | Qiskit Aer MPS backend |
 | **PP** | PPEvaluator | Pauli Propagation |
 
+### Summary of the methods
+| Method JSON | LaTeX Label |
+|---|---|
+| `F_opt.json` | Fourier$^\star$ |
+| `FA_no_opt.json` | Fixed Angles$^\dagger$ |
+| `FA_opt.json` | Fixed Angles$^\star$ |
+| `I_opt.json` | Interp.$^\star$ |
+| `LR_opt.json` | Linear Ramp$^\star$|
+| `LR.json` | Linear Ramp |
+| `RTS_opt.json` | Recursive TS$^\star$ |
+| `TQA.json` | TQA |
+| `TQA_opt.json` | TQA$^\star$ |
+| `PT_AAA.json` | Param. Transfer |
+
 ### Flag types
 
 - **opt**: Indicates the usage of an additional QAOA angle optimization step
