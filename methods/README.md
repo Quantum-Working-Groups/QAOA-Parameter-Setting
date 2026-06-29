@@ -26,17 +26,17 @@ There is an example configuration file, [`example_method.json`](example_method.j
 | **PP** | PPEvaluator | Pauli Propagation |
 
 ### Summary of the methods
-| Method JSON | LaTeX Label |
+| Method JSON | Label |
 |---|---|
-| `F_opt.json` | Fourier$^\star$ |
-| `FA_no_opt.json` | Fixed Angles$^\dagger$ |
-| `FA_opt.json` | Fixed Angles$^\star$ |
+| `F_opt.json` | Fourier $^\star$ |
+| `FA_no_opt.json` | Fixed Angles $^\dagger$ |
+| `FA_opt.json` | Fixed Angles $^\star$ |
 | `I_opt.json` | Interp.$^\star$ |
-| `LR_opt.json` | Linear Ramp$^\star$|
+| `LR_opt.json` | Linear Ramp $^\star$|
 | `LR.json` | Linear Ramp |
-| `RTS_opt.json` | Recursive TS$^\star$ |
+| `RTS_opt.json` | Recursive TS $^\star$ |
 | `TQA.json` | TQA |
-| `TQA_opt.json` | TQA$^\star$ |
+| `TQA_opt.json` | TQA $^\star$ |
 | `PT_AAA.json` | Param. Transfer |
 
 ### Flag types
