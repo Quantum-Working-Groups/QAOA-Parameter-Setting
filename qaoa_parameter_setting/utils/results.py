@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 import numpy as np
 
+from .constants import OPT_TO_NO_OPT_MAPPING
 from .labels import config_path_to_config
 from .types import MethodConfigJSON
 
@@ -125,13 +126,23 @@ def get_derived_configs(config: str) -> list[tuple[str, DerivedType]]:
 
     for derived_type in derived_types:
         if derived_type == DerivedType.ZEROTH_ITER_IS_NOOPT:
-            derived_configs.append((config.replace("_opt", ""), derived_type))
+            # Use OPT_TO_NO_OPT_MAPPING as the source of truth.
+            # FA -> _no_opt suffix; TQA -> bare-flag (strip _opt).
+            no_opt = OPT_TO_NO_OPT_MAPPING.get(
+                config, config.replace("_opt", "_no_opt")
+            )
+            derived_configs.append((no_opt, derived_type))
         if derived_type == DerivedType.ZEROTH_ITER_IS_LR_OPT:
-            derived_configs.append((config.replace("_angle_opt", "_opt"), derived_type))
+            # LR _angle_opt zeroth iter is the _opt variant (parameter-only).
+            derived_configs.append(
+                (config.replace("_angle_opt", "_opt"), derived_type)
+            )
         if derived_type == DerivedType.INITIAL_PARAMS_LR_NO_OPT:
+            # LR initial params are the bare-flag (no-opt) variant.
+            # Strip _angle_opt -> _opt first, then strip _opt -> bare flag.
             derived_configs.append(
                 (
-                    config.replace("_angle_opt", "_opt").replace("_opt", "_no_opt"),
+                    config.replace("_angle_opt", "_opt").replace("_opt", ""),
                     derived_type,
                 )
             )
