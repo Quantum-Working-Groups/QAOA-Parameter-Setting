@@ -120,5 +120,7 @@ If you use this data in your research, please cite:
 
 ## License
 
+[Apache License 2.0](./LICENSE.txt)
+
 ## Contact
 The corresponding author is Daniel J. Egger, deg@zurich.ibm.com
