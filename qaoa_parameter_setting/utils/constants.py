@@ -8,6 +8,9 @@ METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER = "†"
 METHOD_CONFIG_TO_LABELS: dict[MethodJSON, str] = cast(
     dict[MethodJSON, str],
     {
+        # _opt.json: ramp parameters and angles are optimised
+        # _no_opt.json: parameters and angles are NOT optimised
+        # (no flag).json: only the parameters are optimised, not the angles
         #
         # 1. Fourier
         # trainer_config_to_method("F_{SV,MPS,PP}_opt.json") -> "F_opt.json"
@@ -18,49 +21,63 @@ METHOD_CONFIG_TO_LABELS: dict[MethodJSON, str] = cast(
         # 2. Fixed Angles
         # trainer_config_to_method("FA_{SV,MPS,PP}_no_opt.json") -> "FA_no_opt.json"
         "FA_no_opt.json": f"Fixed Angles{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
+        # trainer_config_to_method("FA_MPSAer_no_opt.json") strips "_MPS" -> "FAAer_opt.json"
+        "FAAer_no_opt.json": f"Fixed Angles{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
         # trainer_config_to_method("FA_{SV,MPS,PP}_opt.json") -> "FA_opt.json"
         "FA_opt.json": f"Fixed Angles{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
-        #
-        # 3. Fixed Angles with MPSAer
         # trainer_config_to_method("FA_MPSAer_opt.json") strips "_MPS" -> "FAAer_opt.json"
         "FAAer_opt.json": f"Fixed Angles{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
-        # Virtual method for the zeroth iteration. No angle optimisation
-        "FAAer_no_opt.json": f"Fixed Angles{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
+        
         #
-        # 4. Interp
+        # 3. Interp
         # trainer_config_to_method("I_{SV,MPS,PP}_opt.json") -> "I_opt.json"
         "I_opt.json": f"Interp.{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         # trainer_config_to_method("I_MPSAer_opt.json") strips "_MPS" -> "IAer_opt.json"
         "IAer_opt.json": f"Interp.{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
+        # trainer_config_to_method("I_{SV,MPS,PP}_no_opt.json") -> "I_no_opt.json"
+        "I_no_opt.json": f"Interp.{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
+        # trainer_config_to_method("I_MPSAer_no_opt.json") strips "_MPS" -> "IAer_no_opt.json"
+        "IAer_no_opt.json": f"Interp.{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
+        # trainer_config_to_method("I_{SV,MPS,PP}.json") -> "I.json"
+        "I.json": "Interp."
+        # trainer_config_to_method("I_MPSAer.json") -> "IAer.json"
+        "IAer.json": "Interp."
         #
-        # 5. Linear Ramp
-        # _opt.json: ramp parameters are optimised, angles are not.
+        # 4. Linear Ramp
         # trainer_config_to_method("LR_{SV,MPS,PP}_opt.json") -> "LR_opt.json"
-        "LR_opt.json": "Linear Ramp",
+        "LR_opt.json": f"Linear Ramp{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         # trainer_config_to_method("LR_MPSAer_opt.json") strips "_MPS" -> "LRAer_opt.json"
-        "LRAer_opt.json": "Linear Ramp",
-        # _no_opt.json: The angles and ramp parameters are not optimised.
-        # trainer_config_to_method("LR_{SV,MPS,PP}.json") -> "LR.json" (no flag = no_opt)
-        "LR.json": f"Linear Ramp{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
+        "LRAer_opt.json": f"Linear Ramp{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
+        # trainer_config_to_method("LR_{SV,MPS,PP}_no_opt.json") -> "LR_no_opt.json"
+        "LR_no_opt.json": f"Linear Ramp{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
+        # trainer_config_to_method("LR_MPSAer_no_opt.json") strips "_MPS" -> "LRAer_no_opt.json"
+        "LRAer_no_opt.json": f"Linear Ramp{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
+        # trainer_config_to_method("LR_{SV,MPS,PP}.json") -> "LR.json"
+        "LR.json": f"Linear Ramp",
         # trainer_config_to_method("LR_MPSAer.json") strips "_MPS" -> "LRAer.json"
-        "LRAer.json": f"Linear Ramp{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
+        "LRAer.json": f"Linear Ramp",
         #
-        # 6. Recursive Transition States
+        # 5. Recursive Transition States
         # trainer_config_to_method("RTS_{SV,MPS,PP}_opt.json") -> "RTS_opt.json"
         "RTS_opt.json": f"Recursive TS{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         # trainer_config_to_method("RTS_MPSAer_opt.json") strips "_MPS" -> "RTSAer_opt.json"
         "RTSAer_opt.json": f"Recursive TS{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         #
-        # 7. Trotterised Quantum Annealing
-        # trainer_config_to_method("TQA_{SV,MPS,PP}.json") -> "TQA.json" (no flag = no_opt)
+        # 6. Trotterised Quantum Annealing
+        # trainer_config_to_method("TQA_{SV,MPS,PP}_no_opt.json") -> "TQA_no_opt.json" 
+        "TQA_no_opt.json": f"TQA{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
+        # trainer_config_to_method("TQA_MPSAer_no_opt.json") strips "_MPS" -> "TQAAer_no_opt.json"
+        "TQAAer_no_opt.json": f"TQA{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
+        # trainer_config_to_method("TQA_{SV,MPS,PP}.json") -> "TQA.json" 
         "TQA.json": "TQA",
+        # trainer_config_to_method("TQA_MPSAerjson") strips "_MPS" -> "TQAAer.json"
+        "TQAAer.json": f"TQA",
         # trainer_config_to_method("TQA_{SV,MPS,PP}_opt.json") -> "TQA_opt.json"
         "TQA_opt.json": f"TQA{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         # trainer_config_to_method("TQA_MPSAer_opt.json") strips "_MPS" -> "TQAAer_opt.json"
         "TQAAer_opt.json": f"TQA{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
-        # Virtual method for the zeroth iteration of TQA_MPSAer. No angle optimisation
-        "TQAAer_no_opt.json": "TQA",
-        # 8. Parameter Transfer
+
+        # 7. Parameter Transfer
         # trainer_config_to_method("PT_PP_AAA.json") strips "_PP" -> "PT_AAA.json"
         "PT_AAA.json": "Param. Transfer",
     },
