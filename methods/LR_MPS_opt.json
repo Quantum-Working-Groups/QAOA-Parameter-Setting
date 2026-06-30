@@ -9,6 +9,19 @@
             },
             
             "train_kwargs": {"reps":10}
+        },
+        {
+            "trainer": "ScipyTrainer",
+            "trainer_init": {
+                "evaluator": "MPSEvaluator",
+                "evaluator_init": {"bond_dim_circuit": 16},
+                "minimize_args": {"options": {"maxiter": 100, "rhobeg": 0.2}}
+            },
+            "train_kwargs": {
+                "result": {
+                    "optimized_qaoa_angles": "params0"
+                }
+            }
         }
     ],
     "description": "optimized TQATrainer with MPSEvaluator"
