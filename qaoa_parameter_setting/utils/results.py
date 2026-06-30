@@ -62,7 +62,7 @@ def __config_derived_flags(config: MethodConfigJSON) -> list[DerivedType]:
     is_zeroth_iter_lr_opt = False
     if (
         any(term.lower() in config_lower for term in ["LR_"])
-        and "_angle_opt" in config_lower
+        and "_opt" in config_lower
     ):
         is_zeroth_iter_lr_opt = True
 
@@ -128,10 +128,9 @@ def get_derived_configs(config: str) -> list[tuple[str, DerivedType]]:
         if derived_type == DerivedType.ZEROTH_ITER_IS_NOOPT:
             # Use OPT_TO_NO_OPT_MAPPING as the source of truth.
             # FA -> _no_opt suffix; TQA -> bare-flag (strip _opt).
-            no_opt = OPT_TO_NO_OPT_MAPPING.get(
-                config, config.replace("_opt", "_no_opt")
+            derived_configs.append(
+                (config.replace("_opt", "_no_opt"), derived_type)
             )
-            derived_configs.append((no_opt, derived_type))
         if derived_type == DerivedType.ZEROTH_ITER_IS_LR_OPT:
             # LR _angle_opt zeroth iter is the _opt variant (parameter-only).
             derived_configs.append(
@@ -142,7 +141,7 @@ def get_derived_configs(config: str) -> list[tuple[str, DerivedType]]:
             # Strip _angle_opt -> _opt first, then strip _opt -> bare flag.
             derived_configs.append(
                 (
-                    config.replace("_angle_opt", "_opt").replace("_opt", ""),
+                    config.replace("_angle_opt", "_opt").replace("_opt", "no_opt"),
                     derived_type,
                 )
             )
