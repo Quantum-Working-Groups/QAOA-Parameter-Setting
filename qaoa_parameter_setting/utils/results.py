@@ -41,43 +41,44 @@ class DerivedType(Enum):
     """If the zeroth trainer optimised result is a ``LR_*_opt`` variant."""
     INITIAL_PARAMS_LR_NO_OPT = 2
     """If the zeroth trainer initial parameters are a ``LR_*_no_opt`` variant."""
+    ZEROTH_ITER_IS_NEUTRAL = 3
 
 
 def __config_derived_flags(config: MethodConfigJSON) -> list[DerivedType]:
     config_lower = config.lower()
 
-    # 1. If the zeroth trainer's optimised result is a _no_opt variant of this config.
+    # 1. If the method is _opt and the zeroth iteration is _no_opt (only happens for FA)
     is_zeroth_iter_noopt = False
     if any(
-        term.lower() in config_lower for term in ["TQA_", "FA_", "TQAAer_", "FAAer_"]
+        term.lower() in config_lower for term in ["FA_","FAAer_"]
     ):
         if (
-            "_opt" in config_lower
-            and "_angle_opt" not in config_lower
-            and "_no_opt" not in config_lower
+            "_opt" in config_lower and "_no_opt" not in config_lower
         ):
             is_zeroth_iter_noopt = True
 
-    # 2.If the zeroth trainer's optimised result is an LR_*_opt variant of this config.
-    is_zeroth_iter_lr_opt = False
-    if (
-        any(term.lower() in config_lower for term in ["LR_"])
-        and "_opt" in config_lower
+    # 2. If the method is _opt and the zeroth iteration is neutral configuration
+    is_zeroth_iter_neutral = False
+    if any(
+        term.lower() in config_lower for term in ["TQA_", "TQAAer_", "LR_"]
     ):
-        is_zeroth_iter_lr_opt = True
-
-    # 3. If the initial parameters of the zeroth trainer's result is an LR_*_no_opt variant of this config.
-    is_inital_param_lr_no_opt = False
-    if any(term.lower() in config_lower for term in ["LR_"]):
-        is_inital_param_lr_no_opt = True
+        if (
+            "_opt" in config_lower and "_no_opt" not in config_lower
+        ):
+            is_zeroth_iter_neutral = True
+    
+    # 3. If the method's first energy evaluation of the zeroth iteration is _no_opt
+    is_inital_param_no_opt = False
+    if any(term.lower() in config_lower for term in ["LR_", "TQA_"]):
+        is_inital_param_no_opt = True
 
     # Return all applicable DerivedType flags.
     derived_flags: list[DerivedType] = []
     if is_zeroth_iter_noopt:
         derived_flags.append(DerivedType.ZEROTH_ITER_IS_NOOPT)
-    if is_zeroth_iter_lr_opt:
-        derived_flags.append(DerivedType.ZEROTH_ITER_IS_LR_OPT)
-    if is_inital_param_lr_no_opt:
+    if is_zeroth_iter_neutral:
+        derived_flags.append(DerivedType.ZEROTH_ITER_IS_NEUTRAL)
+    if is_inital_param_no_opt:
         derived_flags.append(DerivedType.INITIAL_PARAMS_LR_NO_OPT)
     return derived_flags
 
@@ -97,7 +98,7 @@ def result_contains_derived(result: dict[str, Any]) -> bool:
         True if the zeroth iteration contains a derived run, False otherwise.
     """
     raw_config: str = result["args"]["config"]
-    config = config_path_to_config(raw_config)
+    config = config_path_to_config(raw_config, True)
     derived_types = __config_derived_flags(config)
     return len(derived_types) > 0
 
@@ -116,7 +117,7 @@ def get_derived_configs(config: str) -> list[tuple[str, DerivedType]]:
         A list of derived config names. If no derived configs exist, the list is empty.
     """
 
-    config = config_path_to_config(config)
+    config = config_path_to_config(config, False)
     derived_types = __config_derived_flags(config)
 
     derived_configs: list[tuple[str, DerivedType]] = []
@@ -125,25 +126,32 @@ def get_derived_configs(config: str) -> list[tuple[str, DerivedType]]:
         raise ValueError(f"Config {config!r} does not contain a derived method.")
 
     for derived_type in derived_types:
-        if derived_type == DerivedType.ZEROTH_ITER_IS_NOOPT:
+        if derived_type == DerivedType.ZEROTH_ITER_IS_NEUTRAL:
             # Use OPT_TO_NO_OPT_MAPPING as the source of truth.
             # FA -> _no_opt suffix; TQA -> bare-flag (strip _opt).
-            derived_configs.append(
-                (config.replace("_opt", "_no_opt"), derived_type)
-            )
-        if derived_type == DerivedType.ZEROTH_ITER_IS_LR_OPT:
-            # LR _angle_opt zeroth iter is the _opt variant (parameter-only).
-            derived_configs.append(
-                (config.replace("_angle_opt", "_opt"), derived_type)
-            )
-        if derived_type == DerivedType.INITIAL_PARAMS_LR_NO_OPT:
-            # LR initial params are the bare-flag (no-opt) variant.
-            # Strip _angle_opt -> _opt first, then strip _opt -> bare flag.
-            derived_configs.append(
-                (
-                    config.replace("_angle_opt", "_opt").replace("_opt", "no_opt"),
-                    derived_type,
+            if "_opt" in config and "_no_opt" not in config:
+                derived_configs.append(
+                    (config.replace("_opt", ""), derived_type)
                 )
-            )
+        if derived_type == DerivedType.ZEROTH_ITER_IS_NOOPT:
+            if "_opt" in config and "_no_opt" not in config:
+                derived_configs.append(
+                    (config.replace("_opt", "_no_opt"), derived_type)
+                )
+        if derived_type == DerivedType.INITIAL_PARAMS_LR_NO_OPT:
+            if "_opt" in config:
+                derived_configs.append(
+                    (
+                        config.replace("_opt", "_no_opt"),
+                        derived_type,
+                    )
+                )
+            else:
+                derived_configs.append(
+                    (
+                        config.replace(".json", "_no_opt.json"),
+                        derived_type,
+                    )
+                )
 
     return derived_configs

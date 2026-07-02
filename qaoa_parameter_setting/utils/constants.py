@@ -159,13 +159,11 @@ TRAINER_CONFIG_EQUIVALENT_MAPPINGS: dict[str, MethodConfigJSON] = {
     "F_SV.json": MethodConfigJSON("F_SV_opt.json"),
     # RTS: old bare-flag RTS names -> _opt
     "RTS_MPS.json": MethodConfigJSON("RTS_MPS_opt.json"),
-    "RTS_MPSAer.json": MethodConfigJSON("RTS_MPS_opt.json"),
+    "RTS_MPSAer.json": MethodConfigJSON("RTS_MPSAer_opt.json"),
     "RTS_PP.json": MethodConfigJSON("RTS_PP_opt.json"),
     "RTS_SV.json": MethodConfigJSON("RTS_SV_opt.json"),
     # TS: old TS name (pre-rename to RTS) -> new RTS _opt names
     "TS_SV.json": MethodConfigJSON("RTS_SV_opt.json"),
-    "TS_MPS.json": MethodConfigJSON("RTS_MPS_opt.json"),
-    "TS_PP.json": MethodConfigJSON("RTS_PP_opt.json"),
     # PT: old PT_AAAM variant
     "PT_PP_AAAM.json": MethodConfigJSON("PT_PP_AAA.json"),
 }

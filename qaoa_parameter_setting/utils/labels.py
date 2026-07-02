@@ -115,7 +115,7 @@ def trainer_config_to_evaluation(trainer_config: MethodConfigJSON) -> Evaluation
         raise ValueError(f"Unrecognised energy evaluation for method {trainer_config}")
 
 
-def sanitize_trainer_config(trainer_config: str) -> MethodConfigJSON:
+def sanitize_trainer_config(trainer_config: str, initial_sanitizing: bool) -> MethodConfigJSON:
     """Sanitize a trainer config string by correcting mislabelled variants.
 
     This function normalizes trainer config strings that may use inconsistent
@@ -136,12 +136,15 @@ def sanitize_trainer_config(trainer_config: str) -> MethodConfigJSON:
         >>> sanitize_trainer_config("FA_SV_opt.json")
         MethodConfigJSON("FA_SV_opt.json")
     """
-    return TRAINER_CONFIG_EQUIVALENT_MAPPINGS.get(
-        trainer_config, MethodConfigJSON(trainer_config)
-    )
+    if initial_sanitizing:
+        return TRAINER_CONFIG_EQUIVALENT_MAPPINGS.get(
+            trainer_config, MethodConfigJSON(trainer_config)
+        )
+    else:
+        return trainer_config
 
 
-def config_path_to_config(config_path: str) -> MethodConfigJSON:
+def config_path_to_config(config_path: str, initial_sanitizing) -> MethodConfigJSON:
     """Convert a string path to a config/method to just the config name.
 
     Note that this function does not validate that the config filename is valid,
@@ -156,7 +159,7 @@ def config_path_to_config(config_path: str) -> MethodConfigJSON:
         paths.
     """
     basename = sanitize_path(config_path).split("/")[-1]
-    return sanitize_trainer_config(basename)
+    return sanitize_trainer_config(basename, initial_sanitizing)
 
 
 def trainer_config_to_evaluation_label(trainer_config: MethodConfigJSON) -> str:
