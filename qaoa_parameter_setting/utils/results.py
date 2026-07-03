@@ -35,13 +35,14 @@ def sanitize_energy(energy_val: float | None | Literal["NA"]) -> float | None:
 
 
 class DerivedType(Enum):
+    """Define types to derive subtrainers"""
+
+    """Zeroth iteration is the no_opt version (FA-only)"""
     ZEROTH_ITER_IS_NOOPT = 0
-    """If the zeroth trainer optimised result is a ``_no_opt`` variant."""
-    ZEROTH_ITER_IS_LR_OPT = 1
-    """If the zeroth trainer optimised result is a ``LR_*_opt`` variant."""
-    INITIAL_PARAMS_LR_NO_OPT = 2
-    """If the zeroth trainer initial parameters are a ``LR_*_no_opt`` variant."""
-    ZEROTH_ITER_IS_NEUTRAL = 3
+    """Initial parameters are the no_opt version (all TQA and LR types)"""
+    INITIAL_PARAMS_LR_NO_OPT = 1
+    """Zeroth iteration is a no-flag version (e.g. TQA_SV.json, derived from TQA_opt and LR_opt)"""
+    ZEROTH_ITER_IS_NOFLAG = 2
 
 
 def __config_derived_flags(config: MethodConfigJSON) -> list[DerivedType]:
@@ -49,24 +50,16 @@ def __config_derived_flags(config: MethodConfigJSON) -> list[DerivedType]:
 
     # 1. If the method is _opt and the zeroth iteration is _no_opt (only happens for FA)
     is_zeroth_iter_noopt = False
-    if any(
-        term.lower() in config_lower for term in ["FA_","FAAer_"]
-    ):
-        if (
-            "_opt" in config_lower and "_no_opt" not in config_lower
-        ):
+    if any(term.lower() in config_lower for term in ["FA_", "FAAer_"]):
+        if "_opt" in config_lower and "_no_opt" not in config_lower:
             is_zeroth_iter_noopt = True
 
     # 2. If the method is _opt and the zeroth iteration is neutral configuration
     is_zeroth_iter_neutral = False
-    if any(
-        term.lower() in config_lower for term in ["TQA_", "TQAAer_", "LR_"]
-    ):
-        if (
-            "_opt" in config_lower and "_no_opt" not in config_lower
-        ):
+    if any(term.lower() in config_lower for term in ["TQA_", "TQAAer_", "LR_"]):
+        if "_opt" in config_lower and "_no_opt" not in config_lower:
             is_zeroth_iter_neutral = True
-    
+
     # 3. If the method's first energy evaluation of the zeroth iteration is _no_opt
     is_inital_param_no_opt = False
     if any(term.lower() in config_lower for term in ["LR_", "TQA_"]):
@@ -77,7 +70,7 @@ def __config_derived_flags(config: MethodConfigJSON) -> list[DerivedType]:
     if is_zeroth_iter_noopt:
         derived_flags.append(DerivedType.ZEROTH_ITER_IS_NOOPT)
     if is_zeroth_iter_neutral:
-        derived_flags.append(DerivedType.ZEROTH_ITER_IS_NEUTRAL)
+        derived_flags.append(DerivedType.ZEROTH_ITER_IS_NOFLAG)
     if is_inital_param_no_opt:
         derived_flags.append(DerivedType.INITIAL_PARAMS_LR_NO_OPT)
     return derived_flags
@@ -126,13 +119,11 @@ def get_derived_configs(config: str) -> list[tuple[str, DerivedType]]:
         raise ValueError(f"Config {config!r} does not contain a derived method.")
 
     for derived_type in derived_types:
-        if derived_type == DerivedType.ZEROTH_ITER_IS_NEUTRAL:
+        if derived_type == DerivedType.ZEROTH_ITER_IS_NOFLAG:
             # Use OPT_TO_NO_OPT_MAPPING as the source of truth.
             # FA -> _no_opt suffix; TQA -> bare-flag (strip _opt).
             if "_opt" in config and "_no_opt" not in config:
-                derived_configs.append(
-                    (config.replace("_opt", ""), derived_type)
-                )
+                derived_configs.append((config.replace("_opt", ""), derived_type))
         if derived_type == DerivedType.ZEROTH_ITER_IS_NOOPT:
             if "_opt" in config and "_no_opt" not in config:
                 derived_configs.append(
