@@ -37,12 +37,12 @@ def sanitize_energy(energy_val: float | None | Literal["NA"]) -> float | None:
 class DerivedType(Enum):
     """Define types to derive subtrainers"""
 
-    """Zeroth iteration is the no_opt version (FA-only)"""
     ZEROTH_ITER_IS_NOOPT = 0
-    """Initial parameters are the no_opt version (all TQA and LR types)"""
+    """Zeroth iteration is the no_opt version (FA-only)"""
     INITIAL_PARAMS_LR_NO_OPT = 1
-    """Zeroth iteration is a no-flag version (e.g. TQA_SV.json, derived from TQA_opt and LR_opt)"""
+    """Initial parameters are the no_opt version (all TQA and LR types)"""
     ZEROTH_ITER_IS_NOFLAG = 2
+    """Zeroth iteration is a no-flag version (e.g. TQA_SV.json, derived from TQA_opt and LR_opt)"""
 
 
 def __config_derived_flags(config: MethodConfigJSON) -> list[DerivedType]:
