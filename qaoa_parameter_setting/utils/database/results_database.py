@@ -500,7 +500,7 @@ class ResultsDatabase:
             # If the zeroth iteration is a no_opt variant, add it to the database.
             if _derived_type in [
                 utils.results.DerivedType.ZEROTH_ITER_IS_NOOPT,
-                utils.results.DerivedType.ZEROTH_ITER_IS_NEUTRAL
+                utils.results.DerivedType.ZEROTH_ITER_IS_NOFLAG,
             ]:
                 self.populate_results(
                     result,
@@ -519,6 +519,7 @@ class ResultsDatabase:
                     config=_derived_config,
                     # Only use the zeroth entry.
                     iter_keys=["0"],
+                    # Only use the zeroth energy
                     history_keys=[0],
                     run_datetime=run_datetime,
                 )
@@ -541,11 +542,8 @@ class ResultsDatabase:
 
         if iter_keys is None:
             iter_keys = self.get_iter_keys(result.keys())
-        if (
-            config.startswith("LR_")
-            and config.endswith("_opt.json")
-            and not config.endswith("_no_opt.json")
-            and not config.endswith("_angle_opt.json")
+        if config.startswith("LR_") and not (
+            config.endswith("_opt.json") and not config.endswith("_no_opt.json")
         ):
             # We have non-angle-optimised Linear Ramp data which should only contain a "0" step.
             if len(iter_keys) != 1:
