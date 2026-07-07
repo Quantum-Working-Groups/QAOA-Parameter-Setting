@@ -489,9 +489,9 @@ class ResultsDatabase:
             run_datetime: Datetime when the run was performed.
         """
         raw_config: str = result["args"]["config"]
-        opt_config = utils.labels.config_path_to_config(raw_config)
+        opt_config = utils.labels.config_path_to_config(raw_config, True)
         derived_configs = [
-            (utils.labels.config_path_to_config(_config), _derived_type)
+            (utils.labels.config_path_to_config(_config, False), _derived_type)
             for _config, _derived_type in utils.results.get_derived_configs(opt_config)
         ]
 
@@ -499,8 +499,8 @@ class ResultsDatabase:
         for _derived_config, _derived_type in derived_configs:
             # If the zeroth iteration is a no_opt variant, add it to the database.
             if _derived_type in [
-                utils.results.DerivedType.ZEROTH_ITER_IS_LR_OPT,
                 utils.results.DerivedType.ZEROTH_ITER_IS_NOOPT,
+                utils.results.DerivedType.ZEROTH_ITER_IS_NOFLAG,
             ]:
                 self.populate_results(
                     result,
@@ -519,6 +519,7 @@ class ResultsDatabase:
                     config=_derived_config,
                     # Only use the zeroth entry.
                     iter_keys=["0"],
+                    # Only use the zeroth energy
                     history_keys=[0],
                     run_datetime=run_datetime,
                 )
@@ -534,18 +535,15 @@ class ResultsDatabase:
         iter_keys: list[str] | None = None,
     ) -> None:
         config: MethodConfigJSON = utils.labels.config_path_to_config(
-            result["args"]["config"]
+            result["args"]["config"], True
         )
 
         warning_suffix = f" for file {filename!r}"
 
         if iter_keys is None:
             iter_keys = self.get_iter_keys(result.keys())
-        if (
-            config.startswith("LR_")
-            and config.endswith("_opt.json")
-            and not config.endswith("_no_opt.json")
-            and not config.endswith("_angle_opt.json")
+        if config.startswith("LR_") and not (
+            config.endswith("_opt.json") and not config.endswith("_no_opt.json")
         ):
             # We have non-angle-optimised Linear Ramp data which should only contain a "0" step.
             if len(iter_keys) != 1:
@@ -575,7 +573,7 @@ class ResultsDatabase:
 
         # Get the energy evaluation methodology
         config: MethodConfigJSON = utils.labels.config_path_to_config(
-            result["args"]["config"]
+            result["args"]["config"], True
         )
 
         try:
@@ -1042,7 +1040,7 @@ class ResultsDatabase:
             __config: str | None = result.get("args", {}).get("config", None)
             if __config is None:
                 raise ValueError("Cannot determine config.")
-            config = utils.labels.config_path_to_config(__config)
+            config = utils.labels.config_path_to_config(__config, True)
 
         __history_keys = list(history_keys) if history_keys is not None else None
 

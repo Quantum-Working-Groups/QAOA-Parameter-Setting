@@ -75,7 +75,9 @@ def trainer_config_to_method_label(config: MethodConfigJSON | MethodJSON) -> str
     try:
         # This will fail if config is a MethodJSON, i.e., without an evaluation
         # string.
-        return method_to_method_label(trainer_config_to_method(config))  # pyright: ignore[reportArgumentType]
+        return method_to_method_label(
+            trainer_config_to_method(config)
+        )  # pyright: ignore[reportArgumentType]
     except ValueError:
         # If we get here, config is most likely a MethodJSON.
         return method_to_method_label(config)  # pyright: ignore[reportArgumentType]
@@ -115,7 +117,7 @@ def trainer_config_to_evaluation(trainer_config: MethodConfigJSON) -> Evaluation
         raise ValueError(f"Unrecognised energy evaluation for method {trainer_config}")
 
 
-def sanitize_trainer_config(trainer_config: str) -> MethodConfigJSON:
+def sanitize_trainer_config(trainer_config: str, is_old: bool) -> MethodConfigJSON:
     """Sanitize a trainer config string by correcting mislabelled variants.
 
     This function normalizes trainer config strings that may use inconsistent
@@ -126,6 +128,9 @@ def sanitize_trainer_config(trainer_config: str) -> MethodConfigJSON:
 
     Args:
         trainer_config: The trainer config string, which might be mislabelled.
+        is_old: a bool indicating whether the config_path string name comes
+            from an old version of the QAOA-Parameter-Setting repository and needs
+            special reformatting.
 
     Returns:
         The correct trainer config string wrapped as MethodConfigJSON.
@@ -136,12 +141,15 @@ def sanitize_trainer_config(trainer_config: str) -> MethodConfigJSON:
         >>> sanitize_trainer_config("FA_SV_opt.json")
         MethodConfigJSON("FA_SV_opt.json")
     """
-    return TRAINER_CONFIG_EQUIVALENT_MAPPINGS.get(
-        trainer_config, MethodConfigJSON(trainer_config)
-    )
+    if is_old:
+        return TRAINER_CONFIG_EQUIVALENT_MAPPINGS.get(
+            trainer_config, MethodConfigJSON(trainer_config)
+        )
+    else:
+        return trainer_config
 
 
-def config_path_to_config(config_path: str) -> MethodConfigJSON:
+def config_path_to_config(config_path: str, is_old: bool) -> MethodConfigJSON:
     """Convert a string path to a config/method to just the config name.
 
     Note that this function does not validate that the config filename is valid,
@@ -150,13 +158,16 @@ def config_path_to_config(config_path: str) -> MethodConfigJSON:
     Args:
         config_path: A path to a method config file, to be sanitized and
             converted into a valid :type:`MethodConfigJSON`.
+        is_old: a bool indicating whether the config_path string name comes
+            from an old version of the QAOA-Parameter-Setting repository and needs
+            special reformatting.
 
     Returns:
         The name of a method config JSON file, without relative or absolute
         paths.
     """
     basename = sanitize_path(config_path).split("/")[-1]
-    return sanitize_trainer_config(basename)
+    return sanitize_trainer_config(basename, is_old)
 
 
 def trainer_config_to_evaluation_label(trainer_config: MethodConfigJSON) -> str:

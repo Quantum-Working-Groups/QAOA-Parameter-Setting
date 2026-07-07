@@ -27,7 +27,6 @@ METHOD_CONFIG_TO_LABELS: dict[MethodJSON, str] = cast(
         "FA_opt.json": f"Fixed Angles{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         # trainer_config_to_method("FA_MPSAer_opt.json") strips "_MPS" -> "FAAer_opt.json"
         "FAAer_opt.json": f"Fixed Angles{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
-        
         #
         # 3. Interp
         # trainer_config_to_method("I_{SV,MPS,PP}_opt.json") -> "I_opt.json"
@@ -38,20 +37,12 @@ METHOD_CONFIG_TO_LABELS: dict[MethodJSON, str] = cast(
         "I_no_opt.json": f"Interp.{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
         # trainer_config_to_method("I_MPSAer_no_opt.json") strips "_MPS" -> "IAer_no_opt.json"
         "IAer_no_opt.json": f"Interp.{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
-        # trainer_config_to_method("I_{SV,MPS,PP}.json") -> "I.json"
-        "I.json": "Interp.",
-        # trainer_config_to_method("I_MPSAer.json") -> "IAer.json"
-        "IAer.json": "Interp.",
         #
         # 4. Linear Ramp
         # trainer_config_to_method("LR_{SV,MPS,PP}_opt.json") -> "LR_opt.json"
         "LR_opt.json": f"Linear Ramp{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         # trainer_config_to_method("LR_MPSAer_opt.json") strips "_MPS" -> "LRAer_opt.json"
         "LRAer_opt.json": f"Linear Ramp{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
-        # trainer_config_to_method("LR_{SV,MPS,PP}_angle_opt.json") -> "LR_angle_opt.json"
-        "LR_angle_opt.json": f"Linear Ramp{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
-        # trainer_config_to_method("LR_MPSAer_angle_opt.json") strips "_MPS" -> "LRAer_angle_opt.json"
-        "LRAer_angle_opt.json": f"Linear Ramp{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         # trainer_config_to_method("LR_{SV,MPS,PP}_no_opt.json") -> "LR_no_opt.json"
         "LR_no_opt.json": f"Linear Ramp{METHOD_NO_OPT_AT_ALL_MARKER_PLACEHOLDER}",
         # trainer_config_to_method("LR_MPSAer_no_opt.json") strips "_MPS" -> "LRAer_no_opt.json"
@@ -82,7 +73,6 @@ METHOD_CONFIG_TO_LABELS: dict[MethodJSON, str] = cast(
         "TQA_opt.json": f"TQA{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
         # trainer_config_to_method("TQA_MPSAer_opt.json") strips "_MPS" -> "TQAAer_opt.json"
         "TQAAer_opt.json": f"TQA{METHOD_ANGLE_OPT_MARKER_PLACEHOLDER}",
-
         # 7. Parameter Transfer
         # trainer_config_to_method("PT_PP_AAA.json") strips "_PP" -> "PT_AAA.json"
         "PT_AAA.json": "Param. Transfer",
@@ -125,6 +115,14 @@ TRAINER_CONFIG_EQUIVALENT_MAPPINGS: dict[str, MethodConfigJSON] = {
     "LR_MPS_angleOpt.json": MethodConfigJSON("LR_MPS_opt.json"),
     "LR_PP_angleOpt.json": MethodConfigJSON("LR_PP_opt.json"),
     "LR_SV_angleOpt.json": MethodConfigJSON("LR_SV_opt.json"),
+    "LR_MPSAer_angle_opt.json": MethodConfigJSON("LR_MPSAer_opt.json"),
+    "LR_MPS_angle_opt.json": MethodConfigJSON("LR_MPS_opt.json"),
+    "LR_PP_angle_opt.json": MethodConfigJSON("LR_PP_opt.json"),
+    "LR_SV_angle_opt.json": MethodConfigJSON("LR_SV_opt.json"),
+    "LR_MPSAer_opt.json": MethodConfigJSON("LR_MPSAer.json"),
+    "LR_MPS_opt.json": MethodConfigJSON("LR_MPS.json"),
+    "LR_PP_opt.json": MethodConfigJSON("LR_PP.json"),
+    "LR_SV_opt.json": MethodConfigJSON("LR_SV.json"),
     #
     # noOpt -> no_opt
     # FA
@@ -133,28 +131,33 @@ TRAINER_CONFIG_EQUIVALENT_MAPPINGS: dict[str, MethodConfigJSON] = {
     "FA_PP_noOpt.json": MethodConfigJSON("FA_PP_no_opt.json"),
     "FA_SV_noOpt.json": MethodConfigJSON("FA_SV_no_opt.json"),
     # TQA: noOpt camelCase -> _no_opt underscore (canonical derived config name)
-    "TQA_MPSAer_noOpt.json": MethodConfigJSON("TQA_MPSAer_no_opt.json"),
-    "TQA_MPS_noOpt.json": MethodConfigJSON("TQA_MPS_no_opt.json"),
-    "TQA_PP_noOpt.json": MethodConfigJSON("TQA_PP_no_opt.json"),
-    "TQA_SV_noOpt.json": MethodConfigJSON("TQA_SV_no_opt.json"),
+    "TQA_MPSAer_noOpt.json": MethodConfigJSON("TQA_MPSAer.json"),
+    "TQA_MPS_noOpt.json": MethodConfigJSON("TQA_MPS.json"),
+    "TQA_PP_noOpt.json": MethodConfigJSON("TQA_PP.json"),
+    "TQA_SV_noOpt.json": MethodConfigJSON("TQA_SV.json"),
+    "TQA_MPSAer_no_opt.json": MethodConfigJSON("TQA_MPSAer.json"),
+    "TQA_MPS_no_opt.json": MethodConfigJSON("TQA_MPS.json"),
+    "TQA_PP_no_opt.json": MethodConfigJSON("TQA_PP.json"),
+    "TQA_SV_no_opt.json": MethodConfigJSON("TQA_SV.json"),
     #
     # Old bare-flag names (no _opt suffix) -> new _opt names
     # Fourier: F_*.json (no flag) was the only Fourier variant in old data.
-
-
     "F_MPS.json": MethodConfigJSON("F_MPS_opt.json"),
     "F_MPSAer.json": MethodConfigJSON("F_MPSAer_opt.json"),
     "F_PP.json": MethodConfigJSON("F_PP_opt.json"),
     "F_SV.json": MethodConfigJSON("F_SV_opt.json"),
+    # Interp: I_*.json (no flag) was the only Interp variant in old data.
+    "I_MPS.json": MethodConfigJSON("I_MPS_opt.json"),
+    "I_MPSAer.json": MethodConfigJSON("I_MPSAer_opt.json"),
+    "I_PP.json": MethodConfigJSON("I_PP_opt.json"),
+    "I_SV.json": MethodConfigJSON("I_SV_opt.json"),
     # RTS: old bare-flag RTS names -> _opt
     "RTS_MPS.json": MethodConfigJSON("RTS_MPS_opt.json"),
-    "RTS_MPSAer.json": MethodConfigJSON("RTS_MPS_opt.json"),
+    "RTS_MPSAer.json": MethodConfigJSON("RTS_MPSAer_opt.json"),
     "RTS_PP.json": MethodConfigJSON("RTS_PP_opt.json"),
     "RTS_SV.json": MethodConfigJSON("RTS_SV_opt.json"),
     # TS: old TS name (pre-rename to RTS) -> new RTS _opt names
     "TS_SV.json": MethodConfigJSON("RTS_SV_opt.json"),
-    "TS_MPS.json": MethodConfigJSON("RTS_MPS_opt.json"),
-    "TS_PP.json": MethodConfigJSON("RTS_PP_opt.json"),
     # PT: old PT_AAAM variant
     "PT_PP_AAAM.json": MethodConfigJSON("PT_PP_AAA.json"),
 }
