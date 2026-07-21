@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 import qaoa_parameter_setting.utils as utils
+from qaoa_parameter_setting.utils.labels import sanitize_trainer_config
 from qaoa_parameter_setting.utils.types import (
     Depth,
     EvaluationType,
@@ -261,6 +262,7 @@ class ResultsDatabase:
     @staticmethod
     def load_failed_configs_from_json(
         filepath: str | Path,
+        methods_is_old: bool = False,
     ) -> dict[GraphKey, dict[MethodConfigJSON, dict[Depth, str]]]:
         """Load failed configs from JSON file and convert string depths to integers.
 
@@ -270,6 +272,9 @@ class ResultsDatabase:
 
         Args:
             filepath: Path to the JSON file containing failed configs.
+            methods_is_old: Whether the methods should be mapped with
+                ``sanitize_trainer_config(..., is_old=True)``. Passed directly
+                to ``is_old`` parameter. Defaults to False.
 
         Returns:
             Failed configs dict with integer depth keys.
@@ -291,7 +296,9 @@ class ResultsDatabase:
         # Convert string depths to integers
         return {
             instance: {
-                method: {int(depth): reason for depth, reason in depths.items()}
+                sanitize_trainer_config(method, is_old=methods_is_old): {
+                    int(depth): reason for depth, reason in depths.items()
+                }
                 for method, depths in methods.items()
             }
             for instance, methods in json_data.items()
