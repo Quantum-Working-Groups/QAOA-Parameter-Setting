@@ -35,7 +35,7 @@ METHOD_TO_COLOUR = {
     "Linear Ramp*": "#CCBB44",
     "Linear Ramp": "#CCBB44",
     f"Linear Ramp{DAGGER}": "#CCBB44",
-    "Recursive TS": "#66CCEE",
+    "Recursive TS*": "#66CCEE",
     "TQA*": "#AA3377",
     "TQA": "#AA3377",
     f"TQA{DAGGER}": "#AA3377",
@@ -64,9 +64,9 @@ METHOD_ALIASES = {
     "Linear Ramp": "Linear Ramp",
     "LR*": "Linear Ramp*",
     "LR": "Linear Ramp",
-    "Recursive TS": "Recursive TS",
-    "Transition States": "Recursive TS",
-    "TS": "Recursive TS",
+    "Recursive TS": "Recursive TS*",
+    "Transition States": "Recursive TS*",
+    "TS": "Recursive TS*",
     "TQA*": "TQA*",
     "TQA": "TQA",
     "Parameter Transfer": "Parameter Transfer",
@@ -300,7 +300,6 @@ def add_panel_labels(
     x = kwargs.pop("x")
     y = kwargs.pop("y")
     for ax, label in zip(np_flatten_axes(axes), labels):
-        print(label)
         ax.text(
             x,
             y,
