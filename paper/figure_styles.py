@@ -97,8 +97,8 @@ LEGEND_MARKER_SIZE = 8
 LEGEND_MARKER_EDGE_WIDTH = 0.8
 
 METHOD_LEGEND_KWARGS = {
-    "loc": "lower center",
-    # "bbox_to_anchor": (0.3, 0.03),
+    # "loc": "lower center",
+    "bbox_to_anchor": (0.4, 0.18),
     "ncol": 2,
     "frameon": False,
     "columnspacing": 0.2,
@@ -108,8 +108,8 @@ METHOD_LEGEND_KWARGS = {
 }
 
 EVALUATION_LEGEND_KWARGS = {
-    "loc": "lower right",
-    # "bbox_to_anchor": (0.7, 0.06),
+    # "loc": "lower right",
+    "bbox_to_anchor": (0.8, 0.18),
     "ncol": 3,
     "frameon": True,
     # "columnspacing": 1,
@@ -128,7 +128,7 @@ PANEL_LABEL_KWARGS = {
 
 SUBPLOT_ADJUST_KWARGS = {
     "bottom": 0.24,
-    "wspace": 0,
+    "wspace": 0.1,
     "hspace": 0.18,
 }
 
