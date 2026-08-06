@@ -76,6 +76,7 @@ METHOD_CONFIG_TO_LABELS: dict[MethodJSON, str] = cast(
         # 7. Parameter Transfer
         # trainer_config_to_method("PT_PP_AAA.json") strips "_PP" -> "PT_AAA.json"
         "PT_AAA.json": "Param. Transfer",
+        "F_P100.json": "Fourier refined*"
     },
 )
 """Mapping between MethodJSON strings and human-readable labels."""
